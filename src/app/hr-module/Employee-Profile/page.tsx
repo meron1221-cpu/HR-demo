@@ -1,8 +1,19 @@
 "use client";
-import { useState, useRef } from "react";
+// import EmployeeProfile from "../Employee-Profile/components/profile";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+// import LanguageSkillsTable from "../Employee-Profile/components/LanguageSkillsTable";
+// import EmployeeForm from "../Employee-Profile/components/EmployeeForm";
+// import FamilyTable from "./components/FamilyMembers";
+import AddressTab from "../Employee-Profile/components/Address";
+import TrainingTab from "../Employee-Profile/components/Training";
+import CostSharingTab from "../Employee-Profile/components/CostSharing";
+import EditExperienceTab from "../Employee-Profile/components/EditExperience";
+// import Education from '../Employee-Profile/components/Education';
+// import Experience from '../Employee-Profile/components/Experience';
+// import Promotion from '../Employee-Profile/components/Promotion';
+// import Upload from '../Employee-Profile/components/Upload';
 import {
-  FiSearch,
   FiUserPlus,
   FiRefreshCw,
   FiPrinter,
@@ -15,25 +26,81 @@ import {
   FiTrendingUp,
   FiUpload,
   FiDollarSign,
-  FiCamera,
   FiUser,
   FiFileText,
   FiBriefcase,
-  FiChevronRight,
-  FiX,
-  FiCalendar,
-  FiFile,
-  FiPlus,
 } from "react-icons/fi";
+
+type Employee = {
+  id: number;
+  employeeId: string;
+  firstName: string;
+  lastName: string;
+  gender: string;
+  dateOfBirth: string;
+  nationality: string;
+  name: string;
+  position: string;
+  department: string;
+  status: string;
+  profileImage?: string;
+  [key: string]: any;
+};
+
+const mockEmployees: Employee[] = [
+  {
+    id: 20005835,
+    employeeId: "20005835",
+    name: "John Doe",
+    firstName: "John",
+    lastName: "Doe",
+    position: "Senior Developer",
+    department: "Engineering",
+    status: "Active",
+    profileImage: "/profile1.jpg",
+    gender: "Male",
+    dateOfBirth: "1985-05-15",
+    nationality: "American",
+  },
+  {
+    id: 20005836,
+    employeeId: "20005836",
+    name: "Jane Smith",
+    firstName: "Jane",
+    lastName: "Smith",
+    position: "UX Designer",
+    department: "Design",
+    status: "Active",
+    profileImage: "/profile2.jpg",
+    gender: "Female",
+    dateOfBirth: "1990-08-22",
+    nationality: "British",
+  },
+  {
+    id: 20005837,
+    employeeId: "20005837",
+    name: "Mike Johnson",
+    firstName: "Mike",
+    lastName: "Johnson",
+    position: "Product Manager",
+    department: "Management",
+    status: "On Leave",
+    gender: "Male",
+    dateOfBirth: "1982-11-30",
+    nationality: "Canadian",
+  },
+];
 
 export default function EmployeeProfilePage() {
   const [activeTab, setActiveTab] = useState("profile");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showNewEmployeeForm, setShowNewEmployeeForm] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
+  const [employees, setEmployees] = useState<Employee[]>(mockEmployees);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const tabs = [
     { id: "profile", name: "Profile", icon: <FiUser /> },
+    { id: "new", name: "New", icon: <FiUserPlus /> },
     { id: "address", name: "Address", icon: <FiMapPin /> },
     { id: "education", name: "Education", icon: <FiBook /> },
     { id: "family", name: "Family", icon: <FiUsers /> },
@@ -53,18 +120,21 @@ export default function EmployeeProfilePage() {
     },
   ];
 
-  const handleSearch = () => {
-    // Search functionality would go here
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleSearch();
+  useEffect(() => {
+    if (employees.length > 0 && !currentEmployee) {
+      setCurrentEmployee(employees[0]);
     }
-  };
+  }, [employees, currentEmployee]);
 
   const handleNewEmployee = () => {
-    setShowNewEmployeeForm(true);
+    setIsEditMode(false);
+    setCurrentEmployee(null);
+    setActiveTab("new");
+  };
+
+  const handleEditEmployee = () => {
+    setIsEditMode(true);
+    setActiveTab("new");
   };
 
   const handleRefresh = () => {
@@ -72,59 +142,62 @@ export default function EmployeeProfilePage() {
     alert("Employee data refreshed successfully!");
   };
 
+  // const handleFormSubmit = (formData: Omit<Employee, 'id'> & Partial<Employee>) => {
+  //     if (isEditMode && currentEmployee) {
+  //       const updatedEmployees = employees.map(emp =>
+  //         emp.id === currentEmployee.id ? { ...emp, ...formData } : emp
+  //       );
+  //       setEmployees(updatedEmployees);
+  //       setCurrentEmployee({ ...currentEmployee, ...formData });
+  //       alert("Employee updated successfully!");
+  //     } else {
+  //       const newId = Math.max(0, ...employees.map(e => e.id)) + 1;
+  //       const newEmployee: Employee = {
+  //         id: newId,
+  //         employeeId: formData.employeeId  newId.toString(),
+  //         name: `${formData.firstName  ''} ${formData.lastName  ''}`.trim(),
+  //         firstName: formData.firstName  '',
+  //         lastName: formData.lastName  '',
+  //         gender: formData.gender  '',
+  //         dateOfBirth: formData.dateOfBirth  '',
+  //         nationality: formData.nationality  '',
+  //         position: formData.position  '',
+  //         department: formData.department  '',
+  //         status: formData.status || 'Active',
+  //         profileImage: formData.profileImage,
+  //         ...formData
+  //       };
+  //       setEmployees(prev => [...prev, newEmployee]);
+  //       setCurrentEmployee(newEmployee);
+  //       alert("Employee created successfully!");
+  //     }
+  //     setActiveTab("profile");
+  //   };
+
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      {/* Header Section with Tabs */}
-      <div className="mb-8">
+    <div className="p-4 bg-gray-50 min-h-screen">
+      <div className="mb-6">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
           className="flex flex-col"
         >
-          {/* Top Row - Buttons */}
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex gap-4">
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Search by name, ID, position..."
-                  className="pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                />
-                <button
-                  onClick={handleSearch}
-                  className="absolute left-3 top-3 text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <FiSearch size={18} />
-                </button>
+          <div className="flex justify-end items-center mb-2">
+            {lastRefresh && (
+              <div className="text-xs text-gray-500 mr-2">
+                Last refreshed: {lastRefresh.toLocaleTimeString()}
               </div>
-              <button
-                onClick={handleNewEmployee}
-                className="px-5 py-2.5 bg-green-500 text-white rounded-lg flex items-center gap-2 text-base hover:bg-green-600 transition-all shadow-md hover:shadow-lg"
-              >
-                <FiUserPlus size={18} /> New
-              </button>
-            </div>
-
-            <div className="flex items-center gap-4">
-              {lastRefresh && (
-                <div className="text-sm text-gray-500">
-                  Last refreshed: {lastRefresh.toLocaleTimeString()}
-                </div>
-              )}
-              <button
-                onClick={handleRefresh}
-                className="px-5 py-2.5 bg-gray-500 text-white rounded-lg flex items-center gap-2 text-base hover:bg-gray-600 transition-all shadow-md hover:shadow-lg"
-              >
-                <FiRefreshCw size={18} />
-              </button>
-            </div>
+            )}
+            <button
+              onClick={handleRefresh}
+              className="px-3 py-1.5 bg-gray-500 text-white rounded-lg flex items-center gap-1 text-sm hover:bg-gray-600 transition-all shadow hover:shadow-md"
+            >
+              <FiRefreshCw size={14} />
+              Refresh
+            </button>
           </div>
 
-          {/* Bottom Row - Tabs */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -134,24 +207,110 @@ export default function EmployeeProfilePage() {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-5 py-3 flex items-center gap-2 text-base font-medium whitespace-nowrap border-b-2 transition-all ${
+                onClick={() =>
+                  tab.id === "new" ? handleNewEmployee() : setActiveTab(tab.id)
+                }
+                className={`px-4 py-2 flex items-center gap-2 text-sm font-medium whitespace-nowrap border-b-2 transition-all ${
                   activeTab === tab.id
                     ? "border-blue-500 text-blue-600 bg-blue-50"
                     : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50"
                 }`}
               >
-                <span className="text-lg">{tab.icon}</span>
+                <span className="text-base">{tab.icon}</span>
                 {tab.name}
               </button>
             ))}
           </motion.div>
         </motion.div>
-      </div>
+        {/* {activeTab === "profile" && currentEmployee && (
+          <EmployeeProfile
+            employee={currentEmployee}
+            onEdit={handleEditEmployee}
+          /> */}
+        {/* )} */}
+        {activeTab === "address" && (
+          <div className="mt-10">
+            <AddressTab />
+          </div>
+        )}
+        {activeTab === "training" && (
+          <div className="mt-10">
+            <TrainingTab />
+          </div>
+        )}
+        {activeTab === "cost-sharing" && (
+          <div className="mt-10">
+            <CostSharingTab />
+          </div>
+        )}
 
-      {/* Content area would go here */}
-      <div className="bg-white rounded-xl shadow-lg p-8 mb-8 min-h-[400px]">
-        {/* Content would be rendered here based on activeTab */}
+        {activeTab === "edit" && (
+          <div className="mt-10">
+            <EditExperienceTab />
+          </div>
+        )}
+        {/* 
+        {activeTab === "education" && (
+          <div className="mt-10">
+            {" "}
+            <Education />
+          </div>
+        )}
+        {activeTab === "experience" && (
+          <div className="mt-10">
+            {" "}
+            <Experience />
+          </div>
+        )}
+        {activeTab === "promotion" && (
+          <div className="mt-10">
+            {" "}
+            <Promotion />
+          </div>
+        )}
+        {activeTab === "upload" && (
+          <div className="mt-10">
+            {" "}
+            <Upload />
+          </div>
+        )} */}
+        {/* {activeTab === "language" && (
+          <div className="mt-4">
+            <LanguageSkillsTable />
+          </div>
+        )}
+        {activeTab === "family" && (
+          <div className="mt-4">
+            {" "}
+            <FamilyTable />
+          </div>
+        )} */}
+        {/* {activeTab === "new" && (
+          <div className="bg-white rounded-lg shadow-md p-4 mt-3">
+            <EmployeeForm
+              employeeData={currentEmployee}
+              isEditMode={isEditMode}
+              onSubmit={handleFormSubmit}
+              onCancel={() => setActiveTab("profile")}
+            />
+          </div>
+        )} */}
+        {activeTab !== "profile" &&
+          activeTab !== "language" &&
+          activeTab !== "family" &&
+          activeTab !== "new" &&
+          activeTab !== "address" &&
+          activeTab !== "training" &&
+          activeTab !== "cost-sharing" &&
+          activeTab !== "edit" &&
+          activeTab !== "print" && (
+            <div className="flex items-center justify-center h-64 text-gray-500">
+              <p>
+                {tabs.find((t) => t.id === activeTab)?.name} content will appear
+                here
+              </p>
+            </div>
+          )}
       </div>
     </div>
   );

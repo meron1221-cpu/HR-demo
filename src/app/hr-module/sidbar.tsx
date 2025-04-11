@@ -15,6 +15,9 @@ import {
   FiLayers,
   FiArchive,
   FiUser,
+  FiCalendar,
+  FiCheck,
+  FiSend,
 } from "react-icons/fi";
 import { FaTachometerAlt } from "react-icons/fa";
 
@@ -28,6 +31,7 @@ export default function Sidebar({ className, hidden = false }: SidebarProps) {
     dashboard: false,
     organization: false,
     employee: false,
+    leave: false,
   });
 
   const toggleMenu = (menu: keyof typeof openMenus) => {
@@ -154,6 +158,53 @@ export default function Sidebar({ className, hidden = false }: SidebarProps) {
               >
                 <FiUser className="w-4 h-4" />
                 Employee Info
+              </Link>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <button
+            onClick={() => toggleMenu("leave")}
+            className="flex items-center justify-between w-full p-2 hover:bg-gray-700 rounded"
+          >
+            <div className="flex items-center gap-2">
+              <FiCalendar className="w-4 h-4" />
+              <span>Leave</span>
+            </div>
+            {openMenus.leave ? <FiChevronUp /> : <FiChevronDown />}
+          </button>
+          {openMenus.leave && (
+            <div className="ml-6 mt-1 space-y-2">
+              <Link
+                href="/hr-module/Leave/leave-setting"
+                className="flex items-center gap-2 p-2 hover:bg-gray-700 rounded text-sm"
+              >
+                <FiSettings className="w-4 h-4" />
+                Leave Setting
+              </Link>
+              <Link
+                href="/hr-module/Leave/leave-request"
+                className="flex items-center gap-2 p-2 hover:bg-gray-700 rounded text-sm"
+              >
+                <FiSend className="w-4 h-4" />{" "}
+                {/* Replace FiCalendar with FiFileText */}
+                Leave Request
+              </Link>
+              <Link
+                href="/hr-module/Leave/leave-approve"
+                className="flex items-center gap-2 p-2 hover:bg-gray-700 rounded text-sm"
+              >
+                <FiCheck className="w-4 h-4" />{" "}
+                {/* Replace FiCalendar with FiCheck */}
+                Leave Approve(Dept)
+              </Link>
+              <Link
+                href="/hr-module/Leave/leave-transfer-request"
+                className="flex items-center gap-2 p-2 hover:bg-gray-700 rounded text-sm"
+              >
+                <FiCalendar className="w-4 h-4" />
+                Leave Transfer Request
               </Link>
             </div>
           )}
