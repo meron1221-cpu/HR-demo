@@ -1,10 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
+import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiEdit2, FiPlus, FiTrash2, FiX, FiChevronDown } from "react-icons/fi";
 
 interface Address {
   id: number;
+  employeeId: string;
   addressType: string;
   wereda: string;
   kebele: string;
@@ -47,6 +49,7 @@ export default function AddressPage() {
   const [addresses, setAddresses] = useState<Address[]>([
     {
       id: 1,
+      employeeId: "1",
       addressType: "Birth place",
       wereda: "09",
       kebele: "02",
@@ -63,7 +66,63 @@ export default function AddressPage() {
   ]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [currentAddress, setCurrentAddress] = useState<Address | null>(null);
+  // Fetch addresses from API
+  const fetchAddresses = async () => {
+    try {
+      setLoading(true);
+      const employeeId = "1"; // Replace with the actual employee ID or fetch dynamically
+      const response = await axios.get(
+        `http://localhost:8080/api/employees/${employeeId}/addresses`
+      );
+      setAddresses(response.data);
+      setError(null);
+    } catch (err) {
+      setError("Failed to fetch addresses");
+      console.error("Error fetching addresses:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  // Create or update address
+  const saveAddress = async (addressData: Address) => {
+    try {
+      const employeeId = "1"; // Replace with the actual employee ID or fetch dynamically
+      if (addressData.id) {
+        // Update existing address
+        await axios.put(
+          `http://localhost:8080/api/employees/${employeeId}/addresses/${addressData.id}`,
+          addressData
+        );
+      } else {
+        // Create new address
+        await axios.post(
+          `http://localhost:8080/api/employees/${employeeId}/addresses`,
+          addressData
+        );
+      }
+      fetchAddresses(); // Refresh the list
+      return true;
+    } catch (err) {
+      console.error("Error saving address:", err);
+      return false;
+    }
+  };
+
+  // Delete address
+  const deleteAddress = async (id: number) => {
+    try {
+      const employeeId = "1"; // Replace with the actual employee ID or fetch dynamically
+      await axios.delete(
+        `http://localhost:8080/api/employees/${employeeId}/addresses/${id}`
+      );
+      fetchAddresses(); // Refresh the list
+      return true;
+    } catch (err) {
+      console.error("Error deleting address:", err);
+      return false;
+    }
+  };
   const handleEdit = (address: Address) => {
     setCurrentAddress(address);
     setIsFormOpen(true);
@@ -311,6 +370,7 @@ function AddressForm({
 }) {
   const [formData, setFormData] = useState<Omit<Address, "id">>(
     address || {
+      employeeId: "",
       addressType: "",
       wereda: "",
       kebele: "",
@@ -800,4 +860,11 @@ function AddressForm({
       </motion.div>
     </motion.div>
   );
+}
+function setLoading(arg0: boolean) {
+  throw new Error("Function not implemented.");
+}
+
+function setError(arg0: string | null) {
+  throw new Error("Function not implemented.");
 }

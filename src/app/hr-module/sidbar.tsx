@@ -200,6 +200,14 @@ export default function Sidebar({ className, hidden = false }: SidebarProps) {
                 Leave Approve(Dept)
               </Link>
               <Link
+                href="/hr-module/Leave/leave-approve-hr"
+                className="flex items-center gap-2 p-2 hover:bg-gray-700 rounded text-sm"
+              >
+                <FiCheck className="w-4 h-4" />{" "}
+                {/* Replace FiCalendar with FiCheck */}
+                Leave Approve(HR)
+              </Link>
+              <Link
                 href="/hr-module/Leave/leave-transfer-request"
                 className="flex items-center gap-2 p-2 hover:bg-gray-700 rounded text-sm"
               >

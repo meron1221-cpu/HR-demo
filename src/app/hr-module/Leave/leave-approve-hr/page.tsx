@@ -10,13 +10,102 @@ import {
   FiBell,
 } from "react-icons/fi";
 import { toast, Toaster } from "react-hot-toast";
-import {
-  getLeaveRequests,
-  updateLeaveRequestStatus,
-  getNotifications,
-  markNotificationsAsRead,
-  subscribeToNotifications,
-} from "../../Leave/leave-request/page";
+
+// Shared state for notifications and leave requests
+let globalNotifications: any[] = [];
+let globalLeaveRequests: any[] = [];
+
+export function getNotifications() {
+  return globalNotifications;
+}
+
+export function addNotification(notification: any) {
+  globalNotifications = [notification, ...globalNotifications];
+}
+
+export function markNotificationsAsRead() {
+  globalNotifications = globalNotifications.map((n) => ({
+    ...n,
+    read: true,
+  }));
+}
+
+export function getLeaveRequests() {
+  return globalLeaveRequests;
+}
+
+export function addLeaveRequest(request: any) {
+  const newRequest = {
+    ...request,
+    id: globalLeaveRequests.length + 1,
+    status: "Pending",
+    hrApproval: null,
+    timestamp: new Date().toISOString(),
+  };
+
+  globalLeaveRequests = [...globalLeaveRequests, newRequest];
+
+  // Add notification for HR about new leave request
+  addNotification({
+    id: Date.now(),
+    title: "New Leave Request",
+    message: `New leave request from ${newRequest.name} (ID: ${newRequest.employeeId}) needs department approval`,
+    read: false,
+    timestamp: new Date(),
+    type: "new_request",
+    requestId: newRequest.id,
+  });
+
+  return newRequest;
+}
+
+export function updateLeaveRequestStatus(id: number, status: string) {
+  globalLeaveRequests = globalLeaveRequests.map((request) => {
+    if (request.id === id) {
+      const updatedRequest = { ...request, status };
+
+      // Add notification for HR when department approves
+      if (status === "Approved") {
+        addNotification({
+          id: Date.now(),
+          title: "Department Approved Leave",
+          message: `Leave request from ${request.name} (ID: ${request.employeeId}) has been approved by department and needs HR approval`,
+          read: false,
+          timestamp: new Date(),
+          type: "department_approval",
+          requestId: request.id,
+        });
+      }
+
+      return updatedRequest;
+    }
+    return request;
+  });
+}
+
+export function updateHRLeaveRequestStatus(id: number, status: string) {
+  globalLeaveRequests = globalLeaveRequests.map((request) => {
+    if (request.id === id) {
+      const updatedRequest = { ...request, hrApproval: status };
+
+      // Add notification for employee when HR approves/rejects
+      addNotification({
+        id: Date.now(),
+        title: `Leave ${status}`,
+        message: `Your leave request (ID: ${
+          request.id
+        }) has been ${status.toLowerCase()} by HR`,
+        read: false,
+        timestamp: new Date(),
+        type: "hr_decision",
+        requestId: request.id,
+      });
+
+      return updatedRequest;
+    }
+    return request;
+  });
+}
 
 const detectCriticalPeriod = (team: string, leaveDates: Date[]) => {
   const now = new Date();
@@ -33,7 +122,7 @@ const detectCriticalPeriod = (team: string, leaveDates: Date[]) => {
 };
 
 export default function LeaveApprovalPage() {
-  const [activeTab, setActiveTab] = useState("Current");
+  const [activeTab, setActiveTab] = useState<"Current" | "History">("Current");
   const [showOnLeaveTable, setShowOnLeaveTable] = useState(false);
   const [approvalStatus, setApprovalStatus] = useState<Record<number, string>>(
     {}
@@ -68,13 +157,13 @@ export default function LeaveApprovalPage() {
   const allEmployees = getLeaveRequests();
   const employees =
     activeTab === "Current"
-      ? allEmployees.filter((emp) => !emp.status || emp.status === "Pending")
-      : allEmployees.filter(
-          (emp) => emp.status === "Approved" || emp.status === "Rejected"
-        );
+      ? allEmployees.filter(
+          (emp) => emp.status === "Approved" && !emp.hrApproval
+        )
+      : allEmployees.filter((emp) => emp.hrApproval);
 
   const employeesOnLeave = allEmployees.filter(
-    (employee) => employee.status === "Approved"
+    (employee) => employee.hrApproval === "Approved"
   );
 
   useEffect(() => {
@@ -88,42 +177,13 @@ export default function LeaveApprovalPage() {
   }, [allEmployees]);
 
   useEffect(() => {
-    const unsubscribe = subscribeToNotifications(
-      (updatedNotifications: any[]) => {
-        setNotifications(updatedNotifications);
-        setUnreadCount(updatedNotifications.filter((n) => !n.read).length);
-
-        // Show toast for new unread notifications
-        const newNotifications = updatedNotifications.filter(
-          (n) => !n.read && !notifications.some((old) => old.id === n.id)
-        );
-
-        newNotifications.forEach((notification) => {
-          toast(
-            <div className="flex items-start gap-3">
-              <FiBell className="text-blue-500 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="font-medium text-gray-900">
-                  {notification.title}
-                </p>
-                <p className="text-sm text-gray-600">{notification.message}</p>
-              </div>
-            </div>,
-            {
-              position: "top-right",
-              duration: 5000,
-            }
-          );
-        });
-      }
-    );
-
-    return () => unsubscribe();
-  }, [notifications]);
+    setNotifications(getNotifications());
+    setUnreadCount(notifications.filter((n) => !n.read).length);
+  }, [globalNotifications]);
 
   const handleApproval = (employeeId: number, status: string) => {
     setApprovalStatus((prev) => ({ ...prev, [employeeId]: status }));
-    updateLeaveRequestStatus(employeeId, status);
+    updateHRLeaveRequestStatus(employeeId, status);
 
     const employee = allEmployees.find((emp) => emp.id === employeeId);
     if (employee) {
@@ -196,7 +256,7 @@ export default function LeaveApprovalPage() {
       leaveEnd: employee.returnDay,
       approvedDays: employee.days?.toString() || "0",
       remark: "",
-      decision: employee.status || "",
+      decision: employee.hrApproval || "",
       team: employee.team || "Engineering",
     });
     setShowEditForm(true);
@@ -250,6 +310,8 @@ export default function LeaveApprovalPage() {
 
   const handleMarkNotificationsAsRead = () => {
     markNotificationsAsRead();
+    setNotifications(getNotifications());
+    setUnreadCount(0);
   };
 
   const handleNotificationClick = () => {
@@ -283,7 +345,7 @@ export default function LeaveApprovalPage() {
                   key={tab}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => setActiveTab(tab as any)}
                   className={`px-4 py-2 rounded-md text-sm font-medium relative overflow-hidden ${
                     activeTab === tab
                       ? "bg-gradient-to-r from-[#3c8dbc] text-white shadow-lg shadow-[#3c8dbc]/20"
@@ -363,9 +425,9 @@ export default function LeaveApprovalPage() {
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ duration: 0.2 }}
                           onClick={() => {
-                            if (notification.type === "new_request") {
+                            if (notification.type === "department_approval") {
                               const employee = allEmployees.find(
-                                (e) => e.id === notification.employeeId
+                                (e) => e.id === notification.requestId
                               );
                               if (employee) {
                                 handleEdit(employee);
@@ -379,7 +441,9 @@ export default function LeaveApprovalPage() {
                               className={`mt-1 flex-shrink-0 ${
                                 notification.type === "new_request"
                                   ? "text-blue-500"
-                                  : notification.type === "status_update"
+                                  : notification.type === "department_approval"
+                                  ? "text-green-500"
+                                  : notification.type === "hr_decision"
                                   ? notification.decision === "Approved"
                                     ? "text-green-500"
                                     : "text-red-500"
@@ -498,24 +562,24 @@ export default function LeaveApprovalPage() {
                       </td>
                       <td className="py-4 px-6">
                         <div className="flex items-center gap-2">
-                          {employee.status ? (
+                          {employee.hrApproval ? (
                             <span
                               className={`px-3 py-1 rounded-md text-xs font-medium ${
-                                employee.status === "Approved"
+                                employee.hrApproval === "Approved"
                                   ? "bg-green-100 text-green-800"
-                                  : employee.status === "Rejected"
+                                  : employee.hrApproval === "Rejected"
                                   ? "bg-red-100 text-red-800"
                                   : "bg-yellow-100 text-yellow-800"
                               }`}
                             >
-                              {employee.status}
+                              {employee.hrApproval}
                             </span>
                           ) : (
                             <span className="text-gray-500 text-xs">
                               Pending
                             </span>
                           )}
-                          {activeTab === "Current" && (
+                          {activeTab === "Current" && !employee.hrApproval && (
                             <button
                               onClick={() => handleEdit(employee)}
                               className="text-[#3c8dbc] text-xs underline hover:text-[#3c8dbc]/80 transition-colors"
@@ -681,7 +745,7 @@ export default function LeaveApprovalPage() {
                               name="leaveType"
                               value={formData.leaveType}
                               onChange={handleInputChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc]"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
                             >
                               <option value="">-Select One-</option>
                               <option value="Annual">Annual</option>
@@ -738,7 +802,7 @@ export default function LeaveApprovalPage() {
                               name="halfFullDay"
                               value={formData.halfFullDay}
                               onChange={handleInputChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc]"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
                             >
                               <option>Full Day</option>
                               <option>Half Day</option>
@@ -769,7 +833,7 @@ export default function LeaveApprovalPage() {
                                 name="approvedDays"
                                 value={formData.approvedDays}
                                 onChange={handleInputChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc]"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
                               />
                               <div className="flex flex-col gap-1">
                                 <button
@@ -797,7 +861,7 @@ export default function LeaveApprovalPage() {
                               name="decision"
                               value={formData.decision}
                               onChange={handleInputChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc]"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
                               required
                             >
                               <option value="">-Select One-</option>
@@ -816,7 +880,7 @@ export default function LeaveApprovalPage() {
                             name="description"
                             value={formData.description}
                             onChange={handleInputChange}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc]"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
                             placeholder="Enter description"
                           />
                         </div>
@@ -830,7 +894,7 @@ export default function LeaveApprovalPage() {
                             name="remark"
                             value={formData.remark}
                             onChange={handleInputChange}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc]"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
                             placeholder="Enter remarks"
                           />
                         </div>
