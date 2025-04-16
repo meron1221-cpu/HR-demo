@@ -20,6 +20,7 @@ import {
   FiSend,
 } from "react-icons/fi";
 import { FaTachometerAlt } from "react-icons/fa";
+import { CalendarDaysIcon } from "@heroicons/react/24/outline";
 
 interface SidebarProps {
   className?: string;
@@ -184,6 +185,27 @@ export default function Sidebar({ className, hidden = false }: SidebarProps) {
                 Leave Setting
               </Link>
               <Link
+                href="/hr-module/Leave/leave-schedule"
+                className="flex items-center gap-2 p-2 hover:bg-gray-700 rounded text-sm"
+              >
+                <CalendarDaysIcon className="w-4 h-4" />
+                Leave Schedule
+              </Link>
+              <Link
+                href="/hr-module/Leave/leave-schedule-approve"
+                className="flex items-center gap-2 p-2 hover:bg-gray-700 rounded text-sm"
+              >
+                <FiCalendar className="w-4 h-4" />
+                Leave Schedule Approve
+              </Link>
+              <Link
+                href="/hr-module/Leave/leave-types"
+                className="flex items-center gap-2 p-2 hover:bg-gray-700 rounded text-sm"
+              >
+                <FiCalendar className="w-4 h-4" />
+                Leave Types
+              </Link>
+              <Link
                 href="/hr-module/Leave/leave-request"
                 className="flex items-center gap-2 p-2 hover:bg-gray-700 rounded text-sm"
               >
@@ -207,12 +229,29 @@ export default function Sidebar({ className, hidden = false }: SidebarProps) {
                 {/* Replace FiCalendar with FiCheck */}
                 Leave Approve(HR)
               </Link>
+
               <Link
                 href="/hr-module/Leave/leave-transfer-request"
                 className="flex items-center gap-2 p-2 hover:bg-gray-700 rounded text-sm"
               >
                 <FiCalendar className="w-4 h-4" />
                 Leave Transfer Request
+              </Link>
+
+              <Link
+                href="/hr-module/Leave/leave-transfer-approval"
+                className="flex items-center gap-2 p-2 hover:bg-gray-700 rounded text-sm"
+              >
+                <FiCalendar className="w-4 h-4" />
+                Leave Transfer Approval
+              </Link>
+
+              <Link
+                href="/hr-module/Leave/leave-balance"
+                className="flex items-center gap-2 p-2 hover:bg-gray-700 rounded text-sm"
+              >
+                <FiCalendar className="w-4 h-4" />
+                Leave Balance
               </Link>
             </div>
           )}

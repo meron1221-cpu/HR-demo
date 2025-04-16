@@ -1,18 +1,18 @@
 "use client";
-// import EmployeeProfile from "../Employee-Profile/components/profile";
+import EmployeeProfile from "../Employee-Profile/components/profile";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-// import LanguageSkillsTable from "../Employee-Profile/components/LanguageSkillsTable";
-// import EmployeeForm from "../Employee-Profile/components/EmployeeForm";
-// import FamilyTable from "./components/FamilyMembers";
+import LanguageSkillsTable from "../Employee-Profile/components/LanguageSkillsTable";
+import EmployeeForm from "../Employee-Profile/components/EmployeeForm";
+import FamilyTable from "./components/FamilyMembers";
 import AddressTab from "../Employee-Profile/components/Address";
 import TrainingTab from "../Employee-Profile/components/Training";
 import CostSharingTab from "../Employee-Profile/components/CostSharing";
 import EditExperienceTab from "../Employee-Profile/components/EditExperience";
-// import Education from '../Employee-Profile/components/Education';
-// import Experience from '../Employee-Profile/components/Experience';
-// import Promotion from '../Employee-Profile/components/Promotion';
-// import Upload from '../Employee-Profile/components/Upload';
+import Education from "../Employee-Profile/components/Education";
+import Experience from "../Employee-Profile/components/Experience";
+import Promotion from "../Employee-Profile/components/Promotion";
+import Upload from "../Employee-Profile/components/Upload";
 import {
   FiUserPlus,
   FiRefreshCw,
