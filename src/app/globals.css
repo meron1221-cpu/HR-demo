@@ -16,3 +16,8 @@
 .sidebar-hidden {
   transform: translateX(-100%);
 }
+html,
+body {
+  overflow: hidden;
+  height: 100%;
+}
