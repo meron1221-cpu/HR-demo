@@ -8,19 +8,25 @@ import {
   FiX,
   FiMail,
   FiBell,
+  FiSave,
+  FiPrinter,
 } from "react-icons/fi";
 import { toast, Toaster } from "react-hot-toast";
+import {
+  getLeaveRequests,
+  updateLeaveRequestStatus,
+  addLeaveRequest,
+} from "../../Leave/leave-request/page";
 
-// Shared state for notifications and leave requests
+// Shared state for notifications
 let globalNotifications: any[] = [];
-let globalLeaveRequests: any[] = [];
 
 export function getNotifications() {
   return globalNotifications;
 }
 
 export function addNotification(notification: any) {
-  globalNotifications = [notification, ...globalNotifications];
+  globalNotifications = [...globalNotifications, notification];
 }
 
 export function markNotificationsAsRead() {
@@ -28,83 +34,6 @@ export function markNotificationsAsRead() {
     ...n,
     read: true,
   }));
-}
-
-export function getLeaveRequests() {
-  return globalLeaveRequests;
-}
-
-export function addLeaveRequest(request: any) {
-  const newRequest = {
-    ...request,
-    id: globalLeaveRequests.length + 1,
-    status: "Pending",
-    hrApproval: null,
-    timestamp: new Date().toISOString(),
-  };
-
-  globalLeaveRequests = [...globalLeaveRequests, newRequest];
-
-  // Add notification for HR about new leave request
-  addNotification({
-    id: Date.now(),
-    title: "New Leave Request",
-    message: `New leave request from ${newRequest.name} (ID: ${newRequest.employeeId}) needs department approval`,
-    read: false,
-    timestamp: new Date(),
-    type: "new_request",
-    requestId: newRequest.id,
-  });
-
-  return newRequest;
-}
-
-export function updateLeaveRequestStatus(id: number, status: string) {
-  globalLeaveRequests = globalLeaveRequests.map((request) => {
-    if (request.id === id) {
-      const updatedRequest = { ...request, status };
-
-      // Add notification for HR when department approves
-      if (status === "Approved") {
-        addNotification({
-          id: Date.now(),
-          title: "Department Approved Leave",
-          message: `Leave request from ${request.name} (ID: ${request.employeeId}) has been approved by department and needs HR approval`,
-          read: false,
-          timestamp: new Date(),
-          type: "department_approval",
-          requestId: request.id,
-        });
-      }
-
-      return updatedRequest;
-    }
-    return request;
-  });
-}
-
-export function updateHRLeaveRequestStatus(id: number, status: string) {
-  globalLeaveRequests = globalLeaveRequests.map((request) => {
-    if (request.id === id) {
-      const updatedRequest = { ...request, hrApproval: status };
-
-      // Add notification for employee when HR approves/rejects
-      addNotification({
-        id: Date.now(),
-        title: `Leave ${status}`,
-        message: `Your leave request (ID: ${
-          request.id
-        }) has been ${status.toLowerCase()} by HR`,
-        read: false,
-        timestamp: new Date(),
-        type: "hr_decision",
-        requestId: request.id,
-      });
-
-      return updatedRequest;
-    }
-    return request;
-  });
 }
 
 const detectCriticalPeriod = (team: string, leaveDates: Date[]) => {
@@ -121,9 +50,10 @@ const detectCriticalPeriod = (team: string, leaveDates: Date[]) => {
   );
 };
 
-export default function LeaveApprovalPage() {
-  const [activeTab, setActiveTab] = useState<"Current" | "History">("Current");
+export default function LeaveApprovalHRPage() {
+  const [activeTab, setActiveTab] = useState("Current");
   const [showOnLeaveTable, setShowOnLeaveTable] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [approvalStatus, setApprovalStatus] = useState<Record<number, string>>(
     {}
   );
@@ -134,22 +64,20 @@ export default function LeaveApprovalPage() {
   >({});
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState(getNotifications());
-  const [unreadCount, setUnreadCount] = useState(
-    notifications.filter((n) => !n.read).length
-  );
 
   const [formData, setFormData] = useState({
-    name: "",
-    requestDays: "0",
-    halfFullDay: "Full Day",
-    description: "",
-    leaveType: "Annual",
-    leaveStart: "",
-    leaveEnd: "",
-    approvedDays: "0",
-    remark: "",
+    employee: "",
+    noDays: "",
+    daysType: "Full Day",
     decision: "",
-    team: "Engineering",
+    leaveStart: "",
+    returnDay: "",
+    leaveNo: "",
+    totalLeaveDays: "",
+    leaveBalances: [
+      { year: "", initial: "", current: "" },
+      { year: "", initial: "", current: "" },
+    ],
   });
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -157,13 +85,13 @@ export default function LeaveApprovalPage() {
   const allEmployees = getLeaveRequests();
   const employees =
     activeTab === "Current"
-      ? allEmployees.filter(
-          (emp) => emp.status === "Approved" && !emp.hrApproval
-        )
-      : allEmployees.filter((emp) => emp.hrApproval);
+      ? allEmployees.filter((emp) => emp.status === "Approved" && !emp.hrStatus)
+      : allEmployees.filter(
+          (emp) => emp.hrStatus === "Approved" || emp.hrStatus === "Rejected"
+        );
 
   const employeesOnLeave = allEmployees.filter(
-    (employee) => employee.hrApproval === "Approved"
+    (employee) => employee.hrStatus === "Approved"
   );
 
   useEffect(() => {
@@ -177,21 +105,75 @@ export default function LeaveApprovalPage() {
   }, [allEmployees]);
 
   useEffect(() => {
+    // Check for department approved requests and add notifications
+    const deptApprovedRequests = allEmployees.filter(
+      (emp) => emp.status === "Approved" && !emp.hrStatus
+    );
+
+    deptApprovedRequests.forEach((request) => {
+      const notificationExists = globalNotifications.some(
+        (n) => n.type === "dept_approved" && n.requestId === request.id
+      );
+
+      if (!notificationExists) {
+        addNotification({
+          id: Date.now(),
+          title: "Department Approved Leave",
+          message: `${request.name}'s leave request was approved by department`,
+          type: "dept_approved",
+          requestId: request.id,
+          read: false,
+          timestamp: new Date(),
+        });
+      }
+    });
+
     setNotifications(getNotifications());
-    setUnreadCount(notifications.filter((n) => !n.read).length);
-  }, [globalNotifications]);
+  }, [allEmployees]);
 
   const handleApproval = (employeeId: number, status: string) => {
+    updateLeaveRequestStatus(employeeId, status, true); // true indicates this is HR approval
     setApprovalStatus((prev) => ({ ...prev, [employeeId]: status }));
-    updateHRLeaveRequestStatus(employeeId, status);
+
+    toast.success(`Leave ${status.toLowerCase()} by HR successfully!`, {
+      position: "top-center",
+      icon: status === "Approved" ? "✅" : "❌",
+    });
 
     const employee = allEmployees.find((emp) => emp.id === employeeId);
     if (employee) {
-      toast.success(`Leave ${status.toLowerCase()} for ${employee.name}!`, {
-        position: "top-center",
-        icon: status === "Approved" ? "✅" : "❌",
-      });
       sendEmailNotification(employee, status);
+
+      // Notification for HR page
+      addNotification({
+        id: Date.now(),
+        title: `HR ${status} Leave`,
+        message: `Leave request for ${employee.name} (ID: ${
+          employee.id
+        }) has been ${status.toLowerCase()} by HR`,
+        type: "hr_status_update",
+        requestId: employee.id,
+        read: false,
+        timestamp: new Date(),
+      });
+
+      // Specific notification for department approval page
+      addNotification({
+        id: Date.now() + 1,
+        title: `HR Decision - ${status}`,
+        message: `HR has ${status.toLowerCase()} the leave request for ${
+          employee.name
+        } (ID: ${employee.id})`,
+        type: "department_notification",
+        requestId: employee.id,
+        read: false,
+        timestamp: new Date(),
+        employeeId: employee.id,
+        employeeName: employee.name,
+        decision: status,
+        leaveType: employee.leaveType,
+        leaveDates: `${employee.leaveStart} to ${employee.returnDay}`,
+      });
     }
 
     checkForCriticalPeriodAlerts(employeeId, status);
@@ -200,13 +182,15 @@ export default function LeaveApprovalPage() {
   const sendEmailNotification = (employee: any, status: string) => {
     const emailContent = `
       To: meronnisrane@gmail.com
-      Subject: Leave Request ${status} - ${employee.name} (ID: ${employee.id})
+      Subject: HR Leave Decision - ${status} - ${employee.name} (ID: ${
+      employee.id
+    })
       
       Dear HR Manager,
       
       The leave request for ${employee.name} (Employee ID: ${
       employee.employeeId
-    }) has been ${status.toLowerCase()}.
+    }) has been ${status.toLowerCase()} by HR.
       
       Request Details:
       - Type: ${employee.leaveType}
@@ -214,9 +198,10 @@ export default function LeaveApprovalPage() {
       - Days: ${employee.days || "N/A"}
       - Team: ${employee.team || "N/A"}
       - Description: ${employee.description || "None provided"}
+      - Department Decision: ${employee.status || "Pending"}
       
-      Decision: ${status}
-      ${formData.remark ? `Remarks: ${formData.remark}` : ""}
+      HR Decision: ${status}
+      ${formData.decision ? `HR Remarks: ${formData.decision}` : ""}
       
       Please inform the employee about this decision.
       
@@ -233,31 +218,39 @@ export default function LeaveApprovalPage() {
     if (!employee || !employee.team) return;
 
     if (teamLeaveCounts[employee.team] > 3) {
-      toast(
-        `⚠️ Warning: Multiple leaves from ${employee.team} team during critical period!`,
-        {
-          position: "top-center",
-          duration: 5000,
-          icon: "⚠️",
-        }
-      );
+      const alertMessage = `⚠️ Warning: Multiple leaves from ${employee.team} team during critical period!`;
+      toast(alertMessage, {
+        position: "top-center",
+        duration: 5000,
+        icon: "⚠️",
+      });
+
+      addNotification({
+        id: Date.now(),
+        title: "Critical Period Alert",
+        message: alertMessage,
+        type: "critical_alert",
+        read: false,
+        timestamp: new Date(),
+      });
     }
   };
 
   const handleEdit = (employee: any) => {
     setEditingEmployee(employee);
     setFormData({
-      name: employee.name,
-      requestDays: employee.days?.toString() || "0",
-      halfFullDay: employee.dayType === "half" ? "Half Day" : "Full Day",
-      description: employee.description || "",
-      leaveType: employee.leaveType,
-      leaveStart: employee.leaveStart,
-      leaveEnd: employee.returnDay,
-      approvedDays: employee.days?.toString() || "0",
-      remark: "",
-      decision: employee.hrApproval || "",
-      team: employee.team || "Engineering",
+      employee: employee.employeeId || "",
+      noDays: employee.days?.toString() || "",
+      daysType: employee.dayType === "half" ? "Half Day" : "Full Day",
+      decision: employee.hrStatus || "",
+      leaveStart: employee.leaveStart || "",
+      returnDay: employee.returnDay || "",
+      leaveNo: employee.leaveNo || "",
+      totalLeaveDays: employee.totalLeaveDays?.toString() || "",
+      leaveBalances: [
+        { year: "2016", initial: "20.0", current: "10.0" },
+        { year: "2017", initial: "21.0", current: "21.0" },
+      ],
     });
     setShowEditForm(true);
   };
@@ -281,26 +274,26 @@ export default function LeaveApprovalPage() {
   };
 
   const handleDaysChange = (amount: number) => {
-    const currentDays = parseFloat(formData.approvedDays) || 0;
+    const currentDays = parseFloat(formData.noDays) || 0;
     const newDays = Math.max(0, currentDays + amount);
     setFormData({
       ...formData,
-      approvedDays: newDays.toFixed(1),
+      noDays: newDays.toFixed(1),
     });
   };
 
   const validateForm = () => {
     const errors: Record<string, string> = {};
-    if (!formData.name.trim()) errors.name = "Name is required";
+    if (!formData.employee.trim()) errors.employee = "Employee is required";
     if (!formData.leaveStart)
       errors.leaveStart = "Leave start date is required";
-    if (!formData.leaveEnd) errors.leaveEnd = "Leave end date is required";
+    if (!formData.returnDay) errors.returnDay = "Return day is required";
     if (!formData.decision) errors.decision = "Decision is required";
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const handleSubmitEdit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validateForm() && editingEmployee) {
       handleApproval(editingEmployee.id, formData.decision);
@@ -311,14 +304,6 @@ export default function LeaveApprovalPage() {
   const handleMarkNotificationsAsRead = () => {
     markNotificationsAsRead();
     setNotifications(getNotifications());
-    setUnreadCount(0);
-  };
-
-  const handleNotificationClick = () => {
-    setShowNotifications(!showNotifications);
-    if (!showNotifications) {
-      handleMarkNotificationsAsRead();
-    }
   };
 
   return (
@@ -327,7 +312,7 @@ export default function LeaveApprovalPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-[#3c8dbc]/10 to-purple-50 opacity-30"></div>
       </div>
 
-      <Toaster position="top-right" />
+      <Toaster position="top-center" />
 
       <div className="max-w-7xl mx-auto relative z-10">
         <motion.div
@@ -337,7 +322,7 @@ export default function LeaveApprovalPage() {
         >
           <div className="flex flex-col gap-4">
             <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-[#2c6da4] to-[#3c8dbc]">
-              Leave Approve
+              HR Leave Approval
             </h1>
             <div className="flex gap-2">
               {["Current", "History"].map((tab) => (
@@ -345,7 +330,7 @@ export default function LeaveApprovalPage() {
                   key={tab}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => setActiveTab(tab as any)}
+                  onClick={() => setActiveTab(tab)}
                   className={`px-4 py-2 rounded-md text-sm font-medium relative overflow-hidden ${
                     activeTab === tab
                       ? "bg-gradient-to-r from-[#3c8dbc] text-white shadow-lg shadow-[#3c8dbc]/20"
@@ -372,18 +357,23 @@ export default function LeaveApprovalPage() {
             <motion.button
               whileHover={{ scale: 1.1, rotate: 10 }}
               whileTap={{ scale: 0.9 }}
-              onClick={handleNotificationClick}
+              onClick={() => {
+                setShowNotifications(!showNotifications);
+                if (!showNotifications) {
+                  handleMarkNotificationsAsRead();
+                }
+              }}
               className="p-2 rounded-full bg-[#3c8dbc]/10 text-[#3c8dbc] hover:bg-[#3c8dbc]/20 transition-all duration-300 relative shadow-sm"
             >
               <FiBell size={20} />
-              {unreadCount > 0 && (
+              {notifications.filter((n) => !n.read).length > 0 && (
                 <motion.span
                   className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center"
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   exit={{ scale: 0 }}
                 >
-                  {unreadCount}
+                  {notifications.filter((n) => !n.read).length}
                 </motion.span>
               )}
             </motion.button>
@@ -394,18 +384,12 @@ export default function LeaveApprovalPage() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -10, scale: 0.95 }}
                   transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                  className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl overflow-hidden z-50 border border-gray-200"
+                  className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl overflow-hidden z-50 border border-gray-200"
                 >
-                  <div className="p-3 bg-[#3c8dbc] text-white flex justify-between items-center">
+                  <div className="p-3 bg-[#3c8dbc] text-white">
                     <h3 className="text-sm font-medium">Notifications</h3>
-                    <button
-                      onClick={() => setShowNotifications(false)}
-                      className="text-white hover:text-gray-200"
-                    >
-                      <FiX size={18} />
-                    </button>
                   </div>
-                  <div className="max-h-80 overflow-y-auto">
+                  <div className="max-h-60 overflow-y-auto">
                     {notifications.length === 0 ? (
                       <motion.div
                         initial={{ opacity: 0 }}
@@ -418,63 +402,21 @@ export default function LeaveApprovalPage() {
                       notifications.map((notification) => (
                         <motion.div
                           key={notification.id}
-                          className={`p-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${
+                          className={`p-3 border-b border-gray-100 ${
                             !notification.read ? "bg-blue-50" : ""
                           }`}
                           initial={{ opacity: 0, x: 10 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ duration: 0.2 }}
-                          onClick={() => {
-                            if (notification.type === "department_approval") {
-                              const employee = allEmployees.find(
-                                (e) => e.id === notification.requestId
-                              );
-                              if (employee) {
-                                handleEdit(employee);
-                                setShowNotifications(false);
-                              }
-                            }
-                          }}
                         >
-                          <div className="flex items-start gap-2">
-                            <div
-                              className={`mt-1 flex-shrink-0 ${
-                                notification.type === "new_request"
-                                  ? "text-blue-500"
-                                  : notification.type === "department_approval"
-                                  ? "text-green-500"
-                                  : notification.type === "hr_decision"
-                                  ? notification.decision === "Approved"
-                                    ? "text-green-500"
-                                    : "text-red-500"
-                                  : "text-gray-500"
-                              }`}
-                            >
-                              <FiBell size={16} />
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex justify-between items-start">
-                                <h4 className="text-sm font-medium text-gray-800">
-                                  {notification.title}
-                                </h4>
-                                <span className="text-xs text-gray-400">
-                                  {new Date(
-                                    notification.timestamp
-                                  ).toLocaleTimeString([], {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
-                                </span>
-                              </div>
-                              <p className="text-xs text-gray-600 mt-1">
-                                {notification.message}
-                              </p>
-                              {!notification.read && (
-                                <div className="mt-1">
-                                  <span className="inline-block h-2 w-2 rounded-full bg-blue-500"></span>
-                                </div>
-                              )}
-                            </div>
+                          <div className="text-sm font-medium text-gray-800">
+                            {notification.title}
+                          </div>
+                          <div className="text-xs text-gray-600 mt-1">
+                            {notification.message}
+                          </div>
+                          <div className="text-xs text-gray-400 mt-1">
+                            {new Date(notification.timestamp).toLocaleString()}
                           </div>
                         </motion.div>
                       ))
@@ -503,8 +445,9 @@ export default function LeaveApprovalPage() {
                     "Leave Type",
                     "Leave Start",
                     "Return Day",
+                    "Dept Status",
                     "HR Status",
-                    "Action",
+                    "HR Action",
                   ].map((header) => (
                     <th
                       key={header}
@@ -519,7 +462,7 @@ export default function LeaveApprovalPage() {
                 {employees.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={9}
                       className="py-12 text-center text-[#3c8dbc]"
                     >
                       No leave requests found
@@ -556,35 +499,45 @@ export default function LeaveApprovalPage() {
                       <td className="py-4 px-6">{employee.leaveStart}</td>
                       <td className="py-4 px-6">{employee.returnDay}</td>
                       <td className="py-4 px-6">
-                        <span className="px-3 py-1 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800">
-                          Pending
+                        <span
+                          className={`px-3 py-1 rounded-md text-xs font-medium ${
+                            employee.status === "Approved"
+                              ? "bg-green-100 text-green-800"
+                              : employee.status === "Rejected"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-yellow-100 text-yellow-800"
+                          }`}
+                        >
+                          {employee.status || "Pending"}
                         </span>
                       </td>
                       <td className="py-4 px-6">
+                        {employee.hrStatus ? (
+                          <span
+                            className={`px-3 py-1 rounded-md text-xs font-medium ${
+                              employee.hrStatus === "Approved"
+                                ? "bg-green-100 text-green-800"
+                                : employee.hrStatus === "Rejected"
+                                ? "bg-red-100 text-red-800"
+                                : "bg-yellow-100 text-yellow-800"
+                            }`}
+                          >
+                            {employee.hrStatus}
+                          </span>
+                        ) : (
+                          <span className="px-3 py-1 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800">
+                            Pending
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6">
                         <div className="flex items-center gap-2">
-                          {employee.hrApproval ? (
-                            <span
-                              className={`px-3 py-1 rounded-md text-xs font-medium ${
-                                employee.hrApproval === "Approved"
-                                  ? "bg-green-100 text-green-800"
-                                  : employee.hrApproval === "Rejected"
-                                  ? "bg-red-100 text-red-800"
-                                  : "bg-yellow-100 text-yellow-800"
-                              }`}
-                            >
-                              {employee.hrApproval}
-                            </span>
-                          ) : (
-                            <span className="text-gray-500 text-xs">
-                              Pending
-                            </span>
-                          )}
-                          {activeTab === "Current" && !employee.hrApproval && (
+                          {activeTab === "Current" && !employee.hrStatus && (
                             <button
                               onClick={() => handleEdit(employee)}
                               className="text-[#3c8dbc] text-xs underline hover:text-[#3c8dbc]/80 transition-colors"
                             >
-                              Edit
+                              Review
                             </button>
                           )}
                         </div>
@@ -705,216 +658,301 @@ export default function LeaveApprovalPage() {
                 initial={{ scale: 0.9, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.9, y: 20 }}
-                className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden"
+                className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex flex-col h-full">
-                  <div className="p-6 flex justify-between items-center border-b border-gray-200">
-                    <h2 className="text-2xl font-bold text-[#3c8dbc]">
-                      Leave Approval
-                    </h2>
+                  <div className="p-4 border-b border-gray-200 bg-[#3c8dbc] text-white flex justify-between items-center">
+                    <motion.h2
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.1 }}
+                      className="text-xl font-bold"
+                    >
+                      Leave Approval Form
+                    </motion.h2>
                     <button
                       onClick={() => setShowEditForm(false)}
-                      className="text-gray-500 hover:text-gray-700"
+                      className="text-white hover:text-gray-200 transition-colors"
                     >
                       <FiX size={24} />
                     </button>
                   </div>
 
                   <div className="overflow-y-auto px-6 py-4 max-h-[70vh]">
-                    <form onSubmit={handleSubmitEdit}>
-                      <div className="space-y-6">
-                        <div className="grid grid-cols-3 gap-6">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Name
-                            </label>
-                            <input
-                              type="text"
-                              name="name"
-                              value={formData.name}
-                              readOnly
-                              className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Leave Type
-                            </label>
-                            <select
-                              name="leaveType"
-                              value={formData.leaveType}
-                              onChange={handleInputChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
-                            >
-                              <option value="">-Select One-</option>
-                              <option value="Annual">Annual</option>
-                              <option value="Sick">Sick</option>
-                              <option value="Maternity">Maternity</option>
-                              <option value="Paternity">Paternity</option>
-                              <option value="Unpaid">Unpaid</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Team
-                            </label>
-                            <input
-                              type="text"
-                              name="team"
-                              value={formData.team}
-                              readOnly
-                              className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-6">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Leave Start
-                            </label>
-                            <input
-                              type="text"
-                              name="leaveStart"
-                              value={formData.leaveStart}
-                              readOnly
-                              className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Leave End
-                            </label>
-                            <input
-                              type="text"
-                              name="leaveEnd"
-                              value={formData.leaveEnd}
-                              readOnly
-                              className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Day Type
-                            </label>
-                            <select
-                              name="halfFullDay"
-                              value={formData.halfFullDay}
-                              onChange={handleInputChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
-                            >
-                              <option>Full Day</option>
-                              <option>Half Day</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-6">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Request Days
-                            </label>
-                            <input
-                              type="text"
-                              name="requestDays"
-                              value={formData.requestDays}
-                              readOnly
-                              className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Approved Days
-                            </label>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="text"
-                                name="approvedDays"
-                                value={formData.approvedDays}
-                                onChange={handleInputChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
-                              />
-                              <div className="flex flex-col gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleDaysChange(0.5)}
-                                  className="px-2 py-1 bg-[#3c8dbc] text-white rounded-md hover:bg-[#3c8dbc]/90"
-                                >
-                                  +
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDaysChange(-0.5)}
-                                  className="px-2 py-1 bg-[#3c8dbc] text-white rounded-md hover:bg-[#3c8dbc]/90"
-                                >
-                                  -
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Decision
-                            </label>
-                            <select
-                              name="decision"
-                              value={formData.decision}
-                              onChange={handleInputChange}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
-                              required
-                            >
-                              <option value="">-Select One-</option>
-                              <option value="Approved">Approved</option>
-                              <option value="Rejected">Rejected</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Description
-                          </label>
-                          <textarea
-                            rows={3}
-                            name="description"
-                            value={formData.description}
-                            onChange={handleInputChange}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
-                            placeholder="Enter description"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Remark
+                    <form onSubmit={handleSubmit}>
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.2 }}
+                        className="space-y-4"
+                      >
+                        {/* Employee Info */}
+                        <div className="flex items-center">
+                          <label className="w-32 text-sm font-medium text-gray-700">
+                            Employee:
                           </label>
                           <input
                             type="text"
-                            name="remark"
-                            value={formData.remark}
+                            name="employee"
+                            value={formData.employee}
                             onChange={handleInputChange}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
-                            placeholder="Enter remarks"
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc]"
+                            placeholder="Enter employee ID"
                           />
                         </div>
-                      </div>
 
-                      <div className="mt-8 pt-4 border-t border-gray-200 flex justify-end gap-4">
-                        <button
-                          type="button"
-                          onClick={() => setShowEditForm(false)}
-                          className="px-6 py-2 bg-gray-300 text-gray-800 rounded-md text-sm font-medium hover:bg-gray-400 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="submit"
-                          className="px-6 py-2 bg-[#3c8dbc] text-white rounded-md text-sm font-medium hover:bg-[#3c8dbc]/90 transition-colors"
-                        >
-                          Save Changes
-                        </button>
-                      </div>
+                        {/* No. Days */}
+                        <div className="flex items-center">
+                          <label className="w-32 text-sm font-medium text-gray-700">
+                            No. Days:
+                          </label>
+                          <div className="flex-1 flex items-center">
+                            <input
+                              type="text"
+                              name="noDays"
+                              value={formData.noDays}
+                              onChange={handleInputChange}
+                              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc]"
+                              placeholder="Enter number of days"
+                            />
+                            <div className="flex flex-col ml-2">
+                              <button
+                                type="button"
+                                onClick={() => handleDaysChange(0.5)}
+                                className="px-2 bg-[#3c8dbc] text-white rounded-t-md hover:bg-[#3c8dbc]/90"
+                              >
+                                +
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDaysChange(-0.5)}
+                                className="px-2 bg-[#3c8dbc] text-white rounded-b-md hover:bg-[#3c8dbc]/90"
+                              >
+                                -
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Days Type */}
+                        <div className="flex items-center">
+                          <label className="w-32 text-sm font-medium text-gray-700">
+                            Days:
+                          </label>
+                          <select
+                            name="daysType"
+                            value={formData.daysType}
+                            onChange={handleInputChange}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc]"
+                          >
+                            <option value="Full Day">Full Day</option>
+                            <option value="Half Day">Half Day</option>
+                          </select>
+                        </div>
+
+                        {/* Decision */}
+                        <div className="flex items-center">
+                          <label className="w-32 text-sm font-medium text-gray-700">
+                            Decision:
+                          </label>
+                          <select
+                            name="decision"
+                            value={formData.decision}
+                            onChange={handleInputChange}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc]"
+                            required
+                          >
+                            <option value="">--- Select Decision ---</option>
+                            <option value="Approved">Approved</option>
+                            <option value="Rejected">Rejected</option>
+                          </select>
+                        </div>
+
+                        {/* Leave Start */}
+                        <div className="flex items-center">
+                          <label className="w-32 text-sm font-medium text-gray-700">
+                            Leave Start:
+                          </label>
+                          <input
+                            type="date"
+                            name="leaveStart"
+                            value={formData.leaveStart}
+                            onChange={handleInputChange}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc]"
+                          />
+                        </div>
+
+                        {/* Return Day */}
+                        <div className="flex items-center">
+                          <label className="w-32 text-sm font-medium text-gray-700">
+                            Return Day:
+                          </label>
+                          <input
+                            type="date"
+                            name="returnDay"
+                            value={formData.returnDay}
+                            onChange={handleInputChange}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc]"
+                          />
+                        </div>
+
+                        {/* Leave No */}
+                        <div className="flex items-center">
+                          <label className="w-32 text-sm font-medium text-gray-700">
+                            No:
+                          </label>
+                          <input
+                            type="text"
+                            name="leaveNo"
+                            value={formData.leaveNo}
+                            onChange={handleInputChange}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc]"
+                            placeholder="Enter leave number"
+                          />
+                        </div>
+
+                        {/* Total Leave Days */}
+                        <div className="flex items-center">
+                          <label className="w-32 text-sm font-medium text-gray-700">
+                            Total Leave Days:
+                          </label>
+                          <input
+                            type="text"
+                            name="totalLeaveDays"
+                            value={formData.totalLeaveDays}
+                            onChange={handleInputChange}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#3c8dbc]"
+                            placeholder="Enter total leave days"
+                          />
+                        </div>
+
+                        {/* Leave Balances */}
+                        <div className="mt-4">
+                          <h3 className="text-sm font-medium text-gray-700 mb-2">
+                            Leave Balances:
+                          </h3>
+                          <table className="w-full border-collapse">
+                            <thead>
+                              <tr className="bg-[#3c8dbc]/10">
+                                <th className="border border-[#3c8dbc]/30 px-2 py-1 text-xs font-medium text-[#3c8dbc]">
+                                  No
+                                </th>
+                                <th className="border border-[#3c8dbc]/30 px-2 py-1 text-xs font-medium text-[#3c8dbc]">
+                                  Leave Year
+                                </th>
+                                <th className="border border-[#3c8dbc]/30 px-2 py-1 text-xs font-medium text-[#3c8dbc]">
+                                  Initial
+                                </th>
+                                <th className="border border-[#3c8dbc]/30 px-2 py-1 text-xs font-medium text-[#3c8dbc]">
+                                  Current
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {formData.leaveBalances.map((balance, index) => (
+                                <tr
+                                  key={index}
+                                  className="hover:bg-[#3c8dbc]/5"
+                                >
+                                  <td className="border border-[#3c8dbc]/30 px-2 py-1 text-center">
+                                    {index + 1}
+                                  </td>
+                                  <td className="border border-[#3c8dbc]/30 px-2 py-1">
+                                    <input
+                                      type="text"
+                                      value={balance.year}
+                                      onChange={(e) => {
+                                        const newBalances = [
+                                          ...formData.leaveBalances,
+                                        ];
+                                        newBalances[index].year =
+                                          e.target.value;
+                                        setFormData({
+                                          ...formData,
+                                          leaveBalances: newBalances,
+                                        });
+                                      }}
+                                      className="w-full text-center bg-transparent focus:outline-none"
+                                      placeholder="Year"
+                                    />
+                                  </td>
+                                  <td className="border border-[#3c8dbc]/30 px-2 py-1">
+                                    <input
+                                      type="text"
+                                      value={balance.initial}
+                                      onChange={(e) => {
+                                        const newBalances = [
+                                          ...formData.leaveBalances,
+                                        ];
+                                        newBalances[index].initial =
+                                          e.target.value;
+                                        setFormData({
+                                          ...formData,
+                                          leaveBalances: newBalances,
+                                        });
+                                      }}
+                                      className="w-full text-center bg-transparent focus:outline-none"
+                                      placeholder="Initial"
+                                    />
+                                  </td>
+                                  <td className="border border-[#3c8dbc]/30 px-2 py-1">
+                                    <input
+                                      type="text"
+                                      value={balance.current}
+                                      onChange={(e) => {
+                                        const newBalances = [
+                                          ...formData.leaveBalances,
+                                        ];
+                                        newBalances[index].current =
+                                          e.target.value;
+                                        setFormData({
+                                          ...formData,
+                                          leaveBalances: newBalances,
+                                        });
+                                      }}
+                                      className="w-full text-center bg-transparent focus:outline-none"
+                                      placeholder="Current"
+                                    />
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Print Option */}
+                        <div className="flex items-center mt-4">
+                          <input
+                            type="checkbox"
+                            id="printLeaveCopy"
+                            className="form-checkbox h-4 w-4 text-[#3c8dbc] rounded"
+                          />
+                          <label
+                            htmlFor="printLeaveCopy"
+                            className="ml-2 text-sm text-gray-700"
+                          >
+                            Print Leave Copy
+                          </label>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex justify-end gap-3 mt-6">
+                          <button
+                            type="button"
+                            onClick={() => setShowEditForm(false)}
+                            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors flex items-center gap-2"
+                          >
+                            <FiX /> Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-4 py-2 bg-[#3c8dbc] text-white rounded-md hover:bg-[#3c8dbc]/90 transition-colors flex items-center gap-2"
+                          >
+                            <FiSave /> Save
+                          </button>
+                        </div>
+                      </motion.div>
                     </form>
                   </div>
                 </div>

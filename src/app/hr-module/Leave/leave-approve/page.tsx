@@ -13,10 +13,26 @@ import { toast, Toaster } from "react-hot-toast";
 import {
   getLeaveRequests,
   updateLeaveRequestStatus,
-  getNotifications,
-  markNotificationsAsRead,
-  subscribeToNotifications,
+  addLeaveRequest,
 } from "../../Leave/leave-request/page";
+
+// Shared state for notifications
+let globalNotifications: any[] = [];
+
+export function getNotifications() {
+  return globalNotifications;
+}
+
+export function addNotification(notification: any) {
+  globalNotifications = [...globalNotifications, notification];
+}
+
+export function markNotificationsAsRead() {
+  globalNotifications = globalNotifications.map((n) => ({
+    ...n,
+    read: true,
+  }));
+}
 
 const detectCriticalPeriod = (team: string, leaveDates: Date[]) => {
   const now = new Date();
@@ -35,6 +51,7 @@ const detectCriticalPeriod = (team: string, leaveDates: Date[]) => {
 export default function LeaveApprovalPage() {
   const [activeTab, setActiveTab] = useState("Current");
   const [showOnLeaveTable, setShowOnLeaveTable] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [approvalStatus, setApprovalStatus] = useState<Record<number, string>>(
     {}
   );
@@ -45,9 +62,6 @@ export default function LeaveApprovalPage() {
   >({});
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState(getNotifications());
-  const [unreadCount, setUnreadCount] = useState(
-    notifications.filter((n) => !n.read).length
-  );
 
   const [formData, setFormData] = useState({
     name: "",
@@ -88,50 +102,55 @@ export default function LeaveApprovalPage() {
   }, [allEmployees]);
 
   useEffect(() => {
-    const unsubscribe = subscribeToNotifications(
-      (updatedNotifications: any[]) => {
-        setNotifications(updatedNotifications);
-        setUnreadCount(updatedNotifications.filter((n) => !n.read).length);
-
-        // Show toast for new unread notifications
-        const newNotifications = updatedNotifications.filter(
-          (n) => !n.read && !notifications.some((old) => old.id === n.id)
-        );
-
-        newNotifications.forEach((notification) => {
-          toast(
-            <div className="flex items-start gap-3">
-              <FiBell className="text-blue-500 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="font-medium text-gray-900">
-                  {notification.title}
-                </p>
-                <p className="text-sm text-gray-600">{notification.message}</p>
-              </div>
-            </div>,
-            {
-              position: "top-right",
-              duration: 5000,
-            }
-          );
-        });
-      }
+    // Check for new leave requests and add notifications
+    const pendingRequests = allEmployees.filter(
+      (emp) => !emp.status || emp.status === "Pending"
     );
 
-    return () => unsubscribe();
-  }, [notifications]);
+    pendingRequests.forEach((request) => {
+      const notificationExists = globalNotifications.some(
+        (n) => n.type === "new_request" && n.requestId === request.id
+      );
+
+      if (!notificationExists) {
+        addNotification({
+          id: Date.now(),
+          title: "New Leave Request",
+          message: `${request.name} (ID: ${request.employeeId}) has submitted a ${request.leaveType} leave request`,
+          type: "new_request",
+          requestId: request.id,
+          read: false,
+          timestamp: new Date(),
+        });
+      }
+    });
+
+    setNotifications(getNotifications());
+  }, [allEmployees]);
 
   const handleApproval = (employeeId: number, status: string) => {
     setApprovalStatus((prev) => ({ ...prev, [employeeId]: status }));
     updateLeaveRequestStatus(employeeId, status);
 
+    toast.success(`Leave ${status.toLowerCase()} successfully!`, {
+      position: "top-center",
+      icon: status === "Approved" ? "✅" : "❌",
+    });
+
     const employee = allEmployees.find((emp) => emp.id === employeeId);
     if (employee) {
-      toast.success(`Leave ${status.toLowerCase()} for ${employee.name}!`, {
-        position: "top-center",
-        icon: status === "Approved" ? "✅" : "❌",
-      });
       sendEmailNotification(employee, status);
+      addNotification({
+        id: Date.now(),
+        title: `Leave ${status}`,
+        message: `Leave request for ${employee.name} (ID: ${
+          employee.id
+        }) has been ${status.toLowerCase()}`,
+        type: "status_update",
+        requestId: employee.id,
+        read: false,
+        timestamp: new Date(),
+      });
     }
 
     checkForCriticalPeriodAlerts(employeeId, status);
@@ -173,14 +192,21 @@ export default function LeaveApprovalPage() {
     if (!employee || !employee.team) return;
 
     if (teamLeaveCounts[employee.team] > 3) {
-      toast(
-        `⚠️ Warning: Multiple leaves from ${employee.team} team during critical period!`,
-        {
-          position: "top-center",
-          duration: 5000,
-          icon: "⚠️",
-        }
-      );
+      const alertMessage = `⚠️ Warning: Multiple leaves from ${employee.team} team during critical period!`;
+      toast(alertMessage, {
+        position: "top-center",
+        duration: 5000,
+        icon: "⚠️",
+      });
+
+      addNotification({
+        id: Date.now(),
+        title: "Critical Period Alert",
+        message: alertMessage,
+        type: "critical_alert",
+        read: false,
+        timestamp: new Date(),
+      });
     }
   };
 
@@ -250,13 +276,7 @@ export default function LeaveApprovalPage() {
 
   const handleMarkNotificationsAsRead = () => {
     markNotificationsAsRead();
-  };
-
-  const handleNotificationClick = () => {
-    setShowNotifications(!showNotifications);
-    if (!showNotifications) {
-      handleMarkNotificationsAsRead();
-    }
+    setNotifications(getNotifications());
   };
 
   return (
@@ -265,7 +285,7 @@ export default function LeaveApprovalPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-[#3c8dbc]/10 to-purple-50 opacity-30"></div>
       </div>
 
-      <Toaster position="top-right" />
+      <Toaster position="top-center" />
 
       <div className="max-w-7xl mx-auto relative z-10">
         <motion.div
@@ -310,18 +330,23 @@ export default function LeaveApprovalPage() {
             <motion.button
               whileHover={{ scale: 1.1, rotate: 10 }}
               whileTap={{ scale: 0.9 }}
-              onClick={handleNotificationClick}
+              onClick={() => {
+                setShowNotifications(!showNotifications);
+                if (!showNotifications) {
+                  handleMarkNotificationsAsRead();
+                }
+              }}
               className="p-2 rounded-full bg-[#3c8dbc]/10 text-[#3c8dbc] hover:bg-[#3c8dbc]/20 transition-all duration-300 relative shadow-sm"
             >
               <FiBell size={20} />
-              {unreadCount > 0 && (
+              {notifications.filter((n) => !n.read).length > 0 && (
                 <motion.span
                   className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center"
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   exit={{ scale: 0 }}
                 >
-                  {unreadCount}
+                  {notifications.filter((n) => !n.read).length}
                 </motion.span>
               )}
             </motion.button>
@@ -332,18 +357,12 @@ export default function LeaveApprovalPage() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -10, scale: 0.95 }}
                   transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                  className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl overflow-hidden z-50 border border-gray-200"
+                  className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl overflow-hidden z-50 border border-gray-200"
                 >
-                  <div className="p-3 bg-[#3c8dbc] text-white flex justify-between items-center">
+                  <div className="p-3 bg-[#3c8dbc] text-white">
                     <h3 className="text-sm font-medium">Notifications</h3>
-                    <button
-                      onClick={() => setShowNotifications(false)}
-                      className="text-white hover:text-gray-200"
-                    >
-                      <FiX size={18} />
-                    </button>
                   </div>
-                  <div className="max-h-80 overflow-y-auto">
+                  <div className="max-h-60 overflow-y-auto">
                     {notifications.length === 0 ? (
                       <motion.div
                         initial={{ opacity: 0 }}
@@ -356,61 +375,21 @@ export default function LeaveApprovalPage() {
                       notifications.map((notification) => (
                         <motion.div
                           key={notification.id}
-                          className={`p-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${
+                          className={`p-3 border-b border-gray-100 ${
                             !notification.read ? "bg-blue-50" : ""
                           }`}
                           initial={{ opacity: 0, x: 10 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ duration: 0.2 }}
-                          onClick={() => {
-                            if (notification.type === "new_request") {
-                              const employee = allEmployees.find(
-                                (e) => e.id === notification.employeeId
-                              );
-                              if (employee) {
-                                handleEdit(employee);
-                                setShowNotifications(false);
-                              }
-                            }
-                          }}
                         >
-                          <div className="flex items-start gap-2">
-                            <div
-                              className={`mt-1 flex-shrink-0 ${
-                                notification.type === "new_request"
-                                  ? "text-blue-500"
-                                  : notification.type === "status_update"
-                                  ? notification.decision === "Approved"
-                                    ? "text-green-500"
-                                    : "text-red-500"
-                                  : "text-gray-500"
-                              }`}
-                            >
-                              <FiBell size={16} />
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex justify-between items-start">
-                                <h4 className="text-sm font-medium text-gray-800">
-                                  {notification.title}
-                                </h4>
-                                <span className="text-xs text-gray-400">
-                                  {new Date(
-                                    notification.timestamp
-                                  ).toLocaleTimeString([], {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
-                                </span>
-                              </div>
-                              <p className="text-xs text-gray-600 mt-1">
-                                {notification.message}
-                              </p>
-                              {!notification.read && (
-                                <div className="mt-1">
-                                  <span className="inline-block h-2 w-2 rounded-full bg-blue-500"></span>
-                                </div>
-                              )}
-                            </div>
+                          <div className="text-sm font-medium text-gray-800">
+                            {notification.title}
+                          </div>
+                          <div className="text-xs text-gray-600 mt-1">
+                            {notification.message}
+                          </div>
+                          <div className="text-xs text-gray-400 mt-1">
+                            {new Date(notification.timestamp).toLocaleString()}
                           </div>
                         </motion.div>
                       ))

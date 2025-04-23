@@ -1,18 +1,18 @@
 "use client";
-import EmployeeProfile from "../Employee-Profile/components/profile";
+// import EmployeeProfile from "../Employee-Profile/components/profile";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import LanguageSkillsTable from "../Employee-Profile/components/LanguageSkillsTable";
-import EmployeeForm from "../Employee-Profile/components/EmployeeForm";
-import FamilyTable from "./components/FamilyMembers";
+// import LanguageSkillsTable from "../Employee-Profile/components/LanguageSkillsTable";
+// import EmployeeForm from "../Employee-Profile/components/EmployeeForm";
+// import FamilyTable from "./components/FamilyMembers";
 import AddressTab from "../Employee-Profile/components/Address";
 import TrainingTab from "../Employee-Profile/components/Training";
 import CostSharingTab from "../Employee-Profile/components/CostSharing";
 import EditExperienceTab from "../Employee-Profile/components/EditExperience";
-import Education from "../Employee-Profile/components/Education";
-import Experience from "../Employee-Profile/components/Experience";
-import Promotion from "../Employee-Profile/components/Promotion";
-import Upload from "../Employee-Profile/components/Upload";
+// import Education from '../Employee-Profile/components/Education';
+// import Experience from '../Employee-Profile/components/Experience';
+// import Promotion from '../Employee-Profile/components/Promotion';
+// import Upload from '../Employee-Profile/components/Upload';
 import {
   FiUserPlus,
   FiRefreshCw,
@@ -142,37 +142,37 @@ export default function EmployeeProfilePage() {
     alert("Employee data refreshed successfully!");
   };
 
-  const handleFormSubmit = (formData: Omit<Employee, 'id'> & Partial<Employee>) => {
-      if (isEditMode && currentEmployee) {
-        const updatedEmployees = employees.map(emp =>
-          emp.id === currentEmployee.id ? { ...emp, ...formData } : emp
-        );
-        setEmployees(updatedEmployees);
-        setCurrentEmployee({ ...currentEmployee, ...formData });
-        alert("Employee updated successfully!");
-      } else {
-        const newId = Math.max(0, ...employees.map(e => e.id)) + 1;
-        const newEmployee: Employee = {
-          id: newId,
-          employeeId: formData.employeeId  newId.toString(),
-          name: `${formData.firstName  ''} ${formData.lastName  ''}`.trim(),
-          firstName: formData.firstName  '',
-          lastName: formData.lastName  '',
-          gender: formData.gender  '',
-          dateOfBirth: formData.dateOfBirth  '',
-          nationality: formData.nationality  '',
-          position: formData.position  '',
-          department: formData.department  '',
-          status: formData.status || 'Active',
-          profileImage: formData.profileImage,
-          ...formData
-        };
-        setEmployees(prev => [...prev, newEmployee]);
-        setCurrentEmployee(newEmployee);
-        alert("Employee created successfully!");
-      }
-      setActiveTab("profile");
-    };
+  // const handleFormSubmit = (formData: Omit<Employee, 'id'> & Partial<Employee>) => {
+  //     if (isEditMode && currentEmployee) {
+  //       const updatedEmployees = employees.map(emp =>
+  //         emp.id === currentEmployee.id ? { ...emp, ...formData } : emp
+  //       );
+  //       setEmployees(updatedEmployees);
+  //       setCurrentEmployee({ ...currentEmployee, ...formData });
+  //       alert("Employee updated successfully!");
+  //     } else {
+  //       const newId = Math.max(0, ...employees.map(e => e.id)) + 1;
+  //       const newEmployee: Employee = {
+  //         id: newId,
+  //         employeeId: formData.employeeId  newId.toString(),
+  //         name: `${formData.firstName  ''} ${formData.lastName  ''}`.trim(),
+  //         firstName: formData.firstName  '',
+  //         lastName: formData.lastName  '',
+  //         gender: formData.gender  '',
+  //         dateOfBirth: formData.dateOfBirth  '',
+  //         nationality: formData.nationality  '',
+  //         position: formData.position  '',
+  //         department: formData.department  '',
+  //         status: formData.status || 'Active',
+  //         profileImage: formData.profileImage,
+  //         ...formData
+  //       };
+  //       setEmployees(prev => [...prev, newEmployee]);
+  //       setCurrentEmployee(newEmployee);
+  //       alert("Employee created successfully!");
+  //     }
+  //     setActiveTab("profile");
+  //   };
 
   return (
     <div className="p-4 bg-gray-50 min-h-screen">
@@ -222,12 +222,12 @@ export default function EmployeeProfilePage() {
             ))}
           </motion.div>
         </motion.div>
-        {activeTab === "profile" && currentEmployee && (
+        {/* {activeTab === "profile" && currentEmployee && (
           <EmployeeProfile
             employee={currentEmployee}
             onEdit={handleEditEmployee}
-          /> }
-        { )}
+          /> */}
+        {/* )} */}
         {activeTab === "address" && (
           <div className="mt-10">
             <AddressTab />
@@ -249,7 +249,7 @@ export default function EmployeeProfilePage() {
             <EditExperienceTab />
           </div>
         )}
-        {
+        {/* 
         {activeTab === "education" && (
           <div className="mt-10">
             {" "}
@@ -273,8 +273,8 @@ export default function EmployeeProfilePage() {
             {" "}
             <Upload />
           </div>
-        )} }
-        { {activeTab === "language" && (
+        )} */}
+        {/* {activeTab === "language" && (
           <div className="mt-4">
             <LanguageSkillsTable />
           </div>
@@ -284,8 +284,8 @@ export default function EmployeeProfilePage() {
             {" "}
             <FamilyTable />
           </div>
-        )} }
-        { {activeTab === "new" && (
+        )} */}
+        {/* {activeTab === "new" && (
           <div className="bg-white rounded-lg shadow-md p-4 mt-3">
             <EmployeeForm
               employeeData={currentEmployee}
@@ -294,7 +294,7 @@ export default function EmployeeProfilePage() {
               onCancel={() => setActiveTab("profile")}
             />
           </div>
-        )} }
+        )} */}
         {activeTab !== "profile" &&
           activeTab !== "language" &&
           activeTab !== "family" &&

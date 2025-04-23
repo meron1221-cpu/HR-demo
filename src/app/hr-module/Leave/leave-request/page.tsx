@@ -13,112 +13,43 @@ import {
   FiInfo,
   FiMinus,
   FiMail,
-  FiBell,
 } from "react-icons/fi";
 import { toast, Toaster } from "react-hot-toast";
 
 // Shared state between components
 let globalLeaveRequests: any[] = [];
-let globalEmployeeHireDate = new Date("2020-01-01");
-let globalNotifications: any[] = [];
-let notificationSubscribers: Function[] = [];
+let globalEmployeeHireDate = new Date("2020-01-01"); // Default to old employee
 
-// Employee functions
 export function setEmployeeHireDate(date: Date) {
   globalEmployeeHireDate = date;
 }
 
 export function addLeaveRequest(request: any) {
-  const newRequest = {
-    ...request,
-    id: globalLeaveRequests.length + 1,
-    status: "Pending",
-    timestamp: new Date().toISOString(),
-  };
-  globalLeaveRequests = [...globalLeaveRequests, newRequest];
-
-  addNotification({
-    id: Date.now(),
-    type: "new_request",
-    requestId: newRequest.id,
-    employeeId: newRequest.employeeId,
-    employeeName: newRequest.name,
-    leaveType: newRequest.leaveType,
-    leaveStart: newRequest.leaveStart,
-    returnDay: newRequest.returnDay,
-    days: newRequest.days,
-    status: "unread",
-    timestamp: new Date().toISOString(),
-    message: `Leave request from ${newRequest.name} has been sent`,
-  });
-
-  return newRequest;
+  globalLeaveRequests = [...globalLeaveRequests, request];
 }
 
 export function getLeaveRequests() {
   return globalLeaveRequests;
 }
 
-export function updateLeaveRequestStatus(id: number, status: string) {
+export function updateLeaveRequestStatus(
+  id: number,
+  status: string,
+  isHrApproval = false
+) {
   globalLeaveRequests = globalLeaveRequests.map((request) =>
-    request.id === id ? { ...request, status } : request
+    request.id === id
+      ? isHrApproval
+        ? { ...request, hrStatus: status }
+        : { ...request, status }
+      : request
   );
-
-  const request = globalLeaveRequests.find((req) => req.id === id);
-  globalLeaveRequests = globalLeaveRequests.map((req) =>
-    req.id === id ? { ...req, status } : req
-  );
-
-  if (request) {
-    addNotification({
-      id: Date.now(),
-      type: "status_update",
-      requestId: id,
-      employeeId: request.employeeId,
-      employeeName: request.name,
-      leaveType: request.leaveType,
-      status,
-      timestamp: new Date().toISOString(),
-      message: `Leave is ${status.toLowerCase()} for ${request.name}`,
-    });
-  }
 }
 
 export function getAnnualLeaveBalance() {
   const isNewEmployee =
     new Date().getFullYear() - globalEmployeeHireDate.getFullYear() < 2;
   return isNewEmployee ? 20 : 30;
-}
-
-// Notification functions
-export function getNotifications() {
-  return globalNotifications;
-}
-
-export function addNotification(notification: any) {
-  globalNotifications = [notification, ...globalNotifications];
-  notifySubscribers();
-}
-
-export function markNotificationsAsRead() {
-  globalNotifications = globalNotifications.map((n) => ({
-    ...n,
-    read: true,
-  }));
-  notifySubscribers();
-}
-
-export function subscribeToNotifications(callback: Function) {
-  notificationSubscribers.push(callback);
-  return () => {
-    notificationSubscribers = notificationSubscribers.filter(
-      (sub) => sub !== callback
-    );
-  };
-}
-
-function notifySubscribers() {
-  notificationSubscribers.forEach((sub) => sub(globalNotifications));
 }
 
 export default function LeaveRequestForm() {
@@ -301,25 +232,17 @@ export default function LeaveRequestForm() {
       description,
       days: noDays,
       dayType,
-      team: "Engineering", // Default team
     };
 
-    const createdRequest = addLeaveRequest(newRequest);
+    addLeaveRequest(newRequest);
     sendEmailNotification(newRequest);
 
-    // Show success toast with notification bell
-    toast.success(
-      <div className="flex items-center gap-2">
-        <FiBell className="text-blue-500 animate-pulse" />
-        <span>
-          Leave requested successfully! Notification sent to approvers.
-        </span>
-      </div>,
-      {
-        position: "top-center",
-        duration: 4000,
-      }
-    );
+    // Show success toast
+    toast.success("Leave requested successfully!", {
+      position: "top-center",
+      duration: 3000,
+      icon: <FiMail className="text-blue-500" />,
+    });
 
     // Reset form
     setIncidentType("");
