@@ -111,6 +111,7 @@ export default function CostSharingTab() {
           errorMessage = err.response.data?.message || errorMessage;
         }
       }
+
       setError(errorMessage);
       console.error("Detailed error:", err.response?.data);
       return false;

@@ -6,9 +6,9 @@ export default function EmployeeProfileLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       <Sidebar />
-      <div className="flex-1 p-4 overflow-auto">{children}</div>
+      <div className="flex-1 p-4 overflow-hidden">{children}</div>
     </div>
   );
 }

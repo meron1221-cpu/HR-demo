@@ -2,12 +2,25 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
-import { FiEdit2, FiPlus, FiTrash2, FiX, FiChevronDown } from "react-icons/fi";
+import {
+  FiEdit2,
+  FiPlus,
+  FiTrash2,
+  FiX,
+  FiChevronDown,
+  FiBriefcase,
+  FiRefreshCw,
+} from "react-icons/fi";
 
 interface Address {
   id?: number;
   employeeId: string;
   addressType: number;
+  addressTypeDetails?: {
+    id: number;
+    addressType: string;
+    description: string;
+  };
   wereda: string;
   kebele: string;
   telephoneOffice: string;
@@ -19,15 +32,24 @@ interface Address {
   teleHome: string;
   houseNo: string;
   region: string;
+  regionDetails?: {
+    id: number;
+    regionName: string;
+    description: string;
+  };
 }
 
-const addressTypeMap: Record<number, string> = {
-  1: "Birth place",
-  2: "Residence",
-  3: "Emergency",
-  4: "Work",
-  5: "Other",
-};
+interface Region {
+  id: number;
+  regionName: string;
+  description: string;
+}
+
+interface HrLuAddressTypeDTO {
+  id: number;
+  addressType: string;
+  description?: string;
+}
 
 interface CountryCode {
   code: string;
@@ -58,38 +80,151 @@ export default function AddressPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [currentAddress, setCurrentAddress] = useState<Address | null>(null);
   const [loading, setLoading] = useState(false);
+  const [regionsLoading, setRegionsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [addressTypes, setAddressTypes] = useState<HrLuAddressTypeDTO[]>([]);
+  const [addressTypesLoading, setAddressTypesLoading] = useState(false);
+
+  const fetchAddressTypes = async () => {
+    try {
+      setAddressTypesLoading(true);
+      const response = await axios.get<HrLuAddressTypeDTO[]>(
+        "http://localhost:8080/api/hr-lu-address-type",
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          withCredentials: true,
+        }
+      );
+
+      if (!response.data || response.data.length === 0) {
+        setAddressTypes([]);
+        return;
+      }
+
+      const validTypes = response.data.map((type) => ({
+        id: type.id,
+        addressType: type.addressType,
+        description: type.description || "",
+      }));
+
+      setAddressTypes(validTypes);
+    } catch (err) {
+      console.error("Error fetching address types:", err);
+      setError("Failed to load address types. Please try again later.");
+      setAddressTypes([]);
+    } finally {
+      setAddressTypesLoading(false);
+    }
+  };
+
+  const fetchRegions = async () => {
+    try {
+      setRegionsLoading(true);
+      interface HrLuRegionDTO {
+        id: number;
+        regionName: string;
+        description?: string;
+      }
+
+      const response = await axios.get<HrLuRegionDTO[]>(
+        "http://localhost:8080/api/hr-lu-region",
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          withCredentials: true,
+        }
+      );
+
+      if (!response.data || response.data.length === 0) {
+        setRegions([]);
+        return;
+      }
+
+      const validRegions = response.data.map((region) => ({
+        id: region.id,
+        regionName: region.regionName,
+        description: region.description || "",
+      }));
+
+      setRegions(validRegions);
+    } catch (err) {
+      console.error("Error fetching regions:", err);
+      setError("Failed to load regions. Please try again later.");
+      setRegions([]);
+    } finally {
+      setRegionsLoading(false);
+    }
+  };
 
   const fetchAddresses = async () => {
     try {
       setLoading(true);
       const employeeId = "1";
       const response = await axios.get(
-        `http://localhost:8080/api/employees/${employeeId}/addresses`
+        `http://localhost:8080/api/employees/${employeeId}/addresses`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          withCredentials: true,
+        }
       );
-      setAddresses(
-        response.data.map((addr: any) => ({
-          ...addr,
-          id: Number(addr.id),
-          addressType: Number(addr.addressType),
-        }))
-      );
+
+      if (response.status !== 200) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+
+      const processedData = (response.data || []).map((addr: any) => ({
+        ...addr,
+        id: addr.id ? Number(addr.id) : 0,
+        addressType: addr.addressType ? Number(addr.addressType) : 0,
+        regionDetails: addr.regionId
+          ? {
+              id: Number(addr.regionId),
+              regionName: addr.regionName || "",
+              description: addr.regionDescription || "",
+            }
+          : undefined,
+      }));
+
+      setAddresses(processedData);
       setError(null);
-    } catch (err) {
-      setError("Failed to fetch addresses");
-      console.error("Error fetching addresses:", err);
+    } catch (err: any) {
+      let errorMessage = "Failed to fetch addresses";
+
+      if (err.response) {
+        errorMessage =
+          err.response.data?.message || `Server error: ${err.response.status}`;
+      } else if (err.request) {
+        errorMessage = "No response received from server";
+      } else {
+        errorMessage = err.message || "Unknown error occurred";
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchAddresses();
-  }, []);
-
   const saveAddress = async (addressData: Address) => {
     try {
       const employeeId = "1";
+      const config = {
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        withCredentials: true,
+      };
+
       const payload = {
         ...addressData,
         addressType: Number(addressData.addressType),
@@ -99,20 +234,22 @@ export default function AddressPage() {
       if (addressData.id) {
         await axios.put(
           `http://localhost:8080/api/employees/${employeeId}/addresses/${addressData.id}`,
-          payload
+          payload,
+          config
         );
       } else {
         delete payload.id;
         await axios.post(
           `http://localhost:8080/api/employees/${employeeId}/addresses`,
-          payload
+          payload,
+          config
         );
       }
       await fetchAddresses();
       return true;
     } catch (err: any) {
       console.error("Error saving address:", err);
-      alert(err.response?.data?.message || "Failed to save address");
+      setError(err.response?.data?.message || "Failed to save address");
       return false;
     }
   };
@@ -121,12 +258,20 @@ export default function AddressPage() {
     try {
       const employeeId = "1";
       await axios.delete(
-        `http://localhost:8080/api/employees/${employeeId}/addresses/${id}`
+        `http://localhost:8080/api/employees/${employeeId}/addresses/${id}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          withCredentials: true,
+        }
       );
       await fetchAddresses();
       return true;
     } catch (err) {
       console.error("Error deleting address:", err);
+      setError("Failed to delete address");
       return false;
     }
   };
@@ -174,6 +319,11 @@ export default function AddressPage() {
     return phone;
   };
 
+  useEffect(() => {
+    fetchAddresses();
+    fetchRegions();
+    fetchAddressTypes();
+  }, []);
   function AddressForm({
     address,
     onClose,
@@ -280,7 +430,7 @@ export default function AddressPage() {
       return isValid;
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmitForm = (e: React.FormEvent) => {
       e.preventDefault();
       if (validateForm()) {
         onSubmit({
@@ -295,404 +445,229 @@ export default function AddressPage() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+        className="fixed inset-0 flex items-center justify-center z-50"
       >
+        <div className="fixed inset-0 bg-black/30" onClick={onClose} />
         <motion.div
-          initial={{ scale: 0.95, y: 20 }}
-          animate={{ scale: 1, y: 0 }}
-          exit={{ scale: 0.95, y: 20 }}
-          className="bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-2xl border border-gray-200/50 w-full max-w-4xl max-h-[90vh] overflow-hidden"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          className="bg-gradient-to-br from-blue-50 to-purple-50 p-6 rounded-xl shadow-lg border border-gray-200 w-full max-w-2xl max-h-[90vh] overflow-y-auto relative z-10"
         >
-          <div className="flex justify-between items-center p-6 border-b border-gray-200/50">
-            <motion.h2
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="text-2xl font-bold bg-gradient-to-r from-[#3c8dbc] to-[#3c8dbc] bg-clip-text text-transparent"
-            >
-              {address ? "Edit Address" : " New Address"}
-            </motion.h2>
-            <motion.button
-              whileHover={{ rotate: 90, scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-2xl font-bold text-[#3c8dbc]">
+              {address ? "Edit Address" : "Add New Address"}
+            </h3>
+            <button
               onClick={onClose}
-              className="text-gray-500 hover:text-gray-700 p-1 rounded-full"
+              className="p-2 rounded-full hover:bg-gray-100"
             >
-              <FiX size={24} />
-            </motion.button>
+              <FiX size={20} className="text-gray-500 hover:text-gray-700" />
+            </button>
           </div>
-          <div className="p-6 overflow-y-auto max-h-[70vh]">
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Address Type */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
-                >
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Address Type <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
+
+          <form onSubmit={handleSubmitForm} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Address Type */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Address Type <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  {addressTypesLoading ? (
+                    <div className="w-full p-2 border border-gray-300 rounded-lg">
+                      Loading...
+                    </div>
+                  ) : addressTypes.length === 0 ? (
+                    <div className="text-red-500 text-xs">
+                      Failed to load address types
+                    </div>
+                  ) : (
                     <select
                       name="addressType"
                       value={formData.addressType}
                       onChange={handleChange}
-                      className={`w-full px-4 py-3 pr-10 rounded-xl border ${
+                      className={`w-full p-2 border ${
                         errors.addressType
                           ? "border-red-500"
                           : "border-gray-300"
-                      } focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent appearance-none`}
+                      } rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
                     >
-                      <option value="">- Select Address Type -</option>
-                      <option value="1">Birth Place</option>
-                      <option value="2">Residence</option>
-                      <option value="3">Emergency</option>
-                      <option value="4">Work</option>
-                      <option value="5">Other</option>
+                      <option value="">-- Select Address Type --</option>
+                      {addressTypes.map((type) => (
+                        <option key={type.id} value={type.id}>
+                          {type.addressType}
+                        </option>
+                      ))}
                     </select>
-                    <FiChevronDown className="absolute right-3 top-3.5 text-gray-400 pointer-events-none" />
-                  </div>
-                  {errors.addressType && (
-                    <motion.p
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-red-500 text-xs mt-1"
-                    >
-                      {errors.addressType}
-                    </motion.p>
                   )}
-                </motion.div>
+                </div>
+                {errors.addressType && (
+                  <p className="text-red-500 text-xs mt-1">
+                    {errors.addressType}
+                  </p>
+                )}
+              </div>
 
-                {/* Region */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.15 }}
-                >
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Region <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
+              {/* Region */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Region <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  {regionsLoading ? (
+                    <div className="w-full p-2 border border-gray-300 rounded-lg">
+                      Loading...
+                    </div>
+                  ) : regions.length === 0 ? (
+                    <div className="text-red-500 text-xs">
+                      Failed to load regions
+                    </div>
+                  ) : (
                     <select
                       name="region"
                       value={formData.region}
                       onChange={handleChange}
-                      className={`w-full px-4 py-3 pr-10 rounded-xl border ${
+                      className={`w-full p-2 border ${
                         errors.region ? "border-red-500" : "border-gray-300"
-                      } focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent appearance-none`}
+                      } rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
                     >
-                      <option value="">- Select Region -</option>
-                      <option value="Addis Ababa">Addis Ababa</option>
-                      <option value="Oromia">Oromia</option>
-                      <option value="Amhara">Amhara</option>
-                      <option value="Tigray">Tigray</option>
-                      <option value="Somali">Somali</option>
-                      <option value="Afar">Afar</option>
-                      <option value="Dire Dawa">Dire Dawa</option>
-                      <option value="Harari">Harari</option>
-                      <option value="Benishangul-Gumuz">
-                        Benishangul-Gumuz
-                      </option>
-                      <option value="Gambela">Gambela</option>
-                      <option value="SNNPR">SNNPR</option>
+                      <option value="">-- Select Region --</option>
+                      {regions.map((region) => (
+                        <option key={region.id} value={region.regionName}>
+                          {region.regionName}
+                        </option>
+                      ))}
                     </select>
-                    <FiChevronDown className="absolute right-3 top-3.5 text-gray-400 pointer-events-none" />
-                  </div>
-                  {errors.region && (
-                    <motion.p
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-red-500 text-xs mt-1"
-                    >
-                      {errors.region}
-                    </motion.p>
                   )}
-                </motion.div>
-
-                {/* Mobile Number */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                >
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Mobile Number <span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex">
-                    <div className="relative mr-2 w-28">
-                      <button
-                        type="button"
-                        className="w-full flex items-center justify-between px-3 py-3 border border-gray-300 rounded-l-xl bg-gray-50 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-[#3c8dbc]"
-                        onClick={() =>
-                          setIsCountryDropdownOpen(!isCountryDropdownOpen)
-                        }
-                      >
-                        <div className="flex items-center">
-                          <span className="mr-2">{selectedCountry.flag}</span>
-                          <span className="text-sm">
-                            {selectedCountry.dialCode}
-                          </span>
-                        </div>
-                        <FiChevronDown
-                          className={`ml-1 h-4 w-4 text-gray-400 transition-transform ${
-                            isCountryDropdownOpen ? "transform rotate-180" : ""
-                          }`}
-                        />
-                      </button>
-                      {isCountryDropdownOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 focus:outline-none max-h-60 overflow-auto"
-                        >
-                          {countryCodes.map((country) => (
-                            <div
-                              key={country.code}
-                              className={`px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer ${
-                                selectedCountry.code === country.code
-                                  ? "bg-blue-50"
-                                  : ""
-                              }`}
-                              onClick={() => handleCountrySelect(country)}
-                            >
-                              <div className="flex items-center">
-                                <span className="mr-2">{country.flag}</span>
-                                <span className="font-medium">
-                                  {country.dialCode}
-                                </span>
-                              </div>
+                </div>
+                {errors.region && (
+                  <p className="text-red-500 text-xs mt-1">{errors.region}</p>
+                )}
+              </div>
+              {/* Mobile Number */}
+              <div className="md:col-span-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Mobile Number <span className="text-red-500">*</span>
+                </label>
+                <div className="flex space-x-2">
+                  <div className="relative flex-1">
+                    <button
+                      type="button"
+                      className="w-full flex items-center justify-between p-2 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100"
+                      onClick={() =>
+                        setIsCountryDropdownOpen(!isCountryDropdownOpen)
+                      }
+                    >
+                      <div className="flex items-center">
+                        <span className="mr-1">{selectedCountry.flag}</span>
+                        <span className="text-xs truncate">
+                          {selectedCountry.dialCode}
+                        </span>
+                      </div>
+                      <FiChevronDown className="h-4 w-4 text-gray-400 min-w-[16px]" />
+                    </button>
+                    {isCountryDropdownOpen && (
+                      <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md py-1 max-h-60 overflow-auto">
+                        {countryCodes.map((country) => (
+                          <div
+                            key={country.code}
+                            className={`px-2 py-1 text-xs cursor-pointer ${
+                              selectedCountry.code === country.code
+                                ? "bg-blue-50"
+                                : "hover:bg-gray-100"
+                            }`}
+                            onClick={() => handleCountrySelect(country)}
+                          >
+                            <div className="flex items-center">
+                              <span className="mr-2">{country.flag}</span>
+                              <span className="truncate">
+                                {country.dialCode}
+                              </span>
                             </div>
-                          ))}
-                        </motion.div>
-                      )}
-                    </div>
-                    <div className="flex-1 relative">
-                      <input
-                        type="tel"
-                        name="mobileNumber"
-                        value={phoneNumber}
-                        onChange={handlePhoneNumberChange}
-                        placeholder="912 345 678"
-                        className={`w-full px-4 py-3 rounded-r-xl border ${
-                          errors.mobileNumber
-                            ? "border-red-500"
-                            : "border-gray-300"
-                        } focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent`}
-                      />
-                    </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  {errors.mobileNumber && (
-                    <motion.p
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-red-500 text-xs mt-1"
-                    >
-                      {errors.mobileNumber}
-                    </motion.p>
-                  )}
-                </motion.div>
-
-                {/* Wereda */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.25 }}
-                >
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Wereda
-                  </label>
-                  <input
-                    type="text"
-                    name="wereda"
-                    value={formData.wereda}
-                    onChange={handleChange}
-                    placeholder="Enter wereda"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
-                  />
-                </motion.div>
-
-                {/* Kebele */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                >
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Kebele
-                  </label>
-                  <input
-                    type="text"
-                    name="kebele"
-                    value={formData.kebele}
-                    onChange={handleChange}
-                    placeholder="Enter kebele"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
-                  />
-                </motion.div>
-
-                {/* Zone */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.35 }}
-                >
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Zone
-                  </label>
-                  <input
-                    type="text"
-                    name="zone"
-                    value={formData.zone}
-                    onChange={handleChange}
-                    placeholder="Enter zone (if applicable)"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
-                  />
-                </motion.div>
-
-                {/* Kifleketema */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 }}
-                >
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Kifleketema
-                  </label>
-                  <input
-                    type="text"
-                    name="kifleketema"
-                    value={formData.kifleketema}
-                    onChange={handleChange}
-                    placeholder="Enter kifleketema"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
-                  />
-                </motion.div>
-
-                {/* Telephone (office) */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.45 }}
-                >
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Telephone (office)
-                  </label>
-                  <input
-                    type="tel"
-                    name="telephoneOffice"
-                    value={formData.telephoneOffice}
-                    onChange={handleChange}
-                    placeholder="Enter office telephone"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
-                  />
-                </motion.div>
-
-                {/* Email */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 }}
-                >
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    placeholder="example@gmail.com"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
-                  />
-                  {errors.email && (
-                    <motion.p
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-red-500 text-xs mt-1"
-                    >
-                      {errors.email}
-                    </motion.p>
-                  )}
-                </motion.div>
-
-                {/* PO BOX */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.55 }}
-                >
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    PO BOX
-                  </label>
-                  <input
-                    type="text"
-                    name="poBox"
-                    value={formData.poBox}
-                    onChange={handleChange}
-                    placeholder="Enter PO Box number"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
-                  />
-                </motion.div>
-
-                {/* Tele (Home) */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.6 }}
-                >
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Tele (Home)
-                  </label>
-                  <input
-                    type="tel"
-                    name="teleHome"
-                    value={formData.teleHome}
-                    onChange={handleChange}
-                    placeholder="Enter home telephone"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
-                  />
-                </motion.div>
-
-                {/* House No */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.65 }}
-                >
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    House No
-                  </label>
-                  <input
-                    type="text"
-                    name="houseNo"
-                    value={formData.houseNo}
-                    onChange={handleChange}
-                    placeholder="Enter house number"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#3c8dbc] focus:border-transparent"
-                  />
-                </motion.div>
+                  <div className="flex-2">
+                    <input
+                      type="tel"
+                      name="mobileNumber"
+                      value={phoneNumber}
+                      onChange={handlePhoneNumberChange}
+                      placeholder="912 345 678"
+                      className={`w-full p-2 border ${
+                        errors.mobileNumber
+                          ? "border-red-500"
+                          : "border-gray-300"
+                      } rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                    />
+                  </div>
+                </div>
+                {errors.mobileNumber && (
+                  <p className="text-red-500 text-xs mt-1">
+                    {errors.mobileNumber}
+                  </p>
+                )}
               </div>
-              <div className="flex justify-end gap-4 pt-4">
-                <motion.button
-                  type="submit"
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
-                  className="px-8 py-3 bg-[#3c8dbc] text-white rounded-xl shadow-lg hover:shadow-xl transition-all"
-                >
-                  {address ? "Update" : "Save"}
-                </motion.button>
-                <motion.button
-                  type="button"
-                  onClick={onClose}
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
-                  className="px-8 py-3 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-all"
-                >
-                  Cancel
-                </motion.button>
-              </div>
-            </form>
-          </div>
+
+              {/* Other fields */}
+              {[
+                { name: "wereda", label: "Wereda" },
+                { name: "kebele", label: "Kebele" },
+                { name: "zone", label: "Zone" },
+                { name: "kifleketema", label: "Kifleketema" },
+                { name: "telephoneOffice", label: "Telephone (Office)" },
+                { name: "email", label: "Email" },
+                { name: "poBox", label: "PO Box" },
+                { name: "teleHome", label: "Tele (Home)" },
+                { name: "houseNo", label: "House No" },
+              ].map((field) => (
+                <div key={field.name}>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    {field.label}
+                  </label>
+                  <input
+                    type={
+                      field.name.includes("tele")
+                        ? "tel"
+                        : field.name === "email"
+                        ? "email"
+                        : "text"
+                    }
+                    name={field.name}
+                    value={
+                      typeof formData[field.name as keyof typeof formData] ===
+                      "object"
+                        ? (formData[field.name as keyof typeof formData] as any)
+                            ?.id || ""
+                        : formData[field.name as keyof typeof formData]
+                    }
+                    onChange={handleChange}
+                    placeholder={`Enter ${field.label.toLowerCase()}`}
+                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-4 justify-end pt-6">
+              <button
+                type="submit"
+                className="px-4 py-2 bg-[#3c8dbc] text-white rounded-lg hover:bg-[#367fa9] shadow-lg hover:shadow-xl"
+              >
+                {address ? "Update " : "Save"}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 shadow-md hover:shadow-lg"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
         </motion.div>
       </motion.div>
     );
@@ -700,15 +675,37 @@ export default function AddressPage() {
 
   return (
     <div className="space-y-6 relative">
+      {/* Error and Success Messages */}
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
+          <span className="block sm:inline">{error}</span>
+          <button
+            onClick={() => setError(null)}
+            className="absolute top-0 bottom-0 right-0 px-4 py-3"
+          >
+            <FiX />
+          </button>
+        </div>
+      )}
+
+      {/* Loading Indicator */}
+      {loading && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      )}
+
+      {/* Blur overlay for Form */}
       {isFormOpen && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 0.5 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.3 }}
           className="fixed inset-0 bg-black z-10"
         />
       )}
+
+      {/* Address Form Popup */}
       <AnimatePresence>
         {isFormOpen && (
           <AddressForm
@@ -718,36 +715,18 @@ export default function AddressPage() {
           />
         )}
       </AnimatePresence>
+
+      {/* Main Address Table */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
         className={`bg-white rounded-xl shadow-lg overflow-hidden ${
-          isFormOpen ? "blur-sm" : ""
+          isFormOpen ? "blur-sm pointer-events-none" : ""
         }`}
       >
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 bg-[#3c8dbc] rounded-lg shadow-md p-2 md:p-3 text-white h-[50px]">
           <div className="flex items-center">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5 mr-2 text-blue-100"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-            </svg>
+            <FiBriefcase size={20} className="h-5 w-5 mr-2 text-blue-100" />
             <div>
               <h1 className="text-[14px] font-bold">Address</h1>
               <p className="text-blue-100 text-xs">
@@ -755,142 +734,115 @@ export default function AddressPage() {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => {
-              setCurrentAddress(null);
-              setIsFormOpen(true);
-            }}
-            className="flex items-center bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-3 py-1 rounded-md shadow-sm hover:shadow transition-all duration-300 border border-white border-opacity-20 text-xs md:text-sm mt-2 md:mt-0"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4 mr-1"
-              viewBox="0 0 20 20"
-              fill="currentColor"
+          <div className="flex items-center gap-2">
+            <button
+              onClick={fetchAddresses}
+              className="flex items-center bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-3 py-1 rounded-md shadow-sm hover:shadow transition-all duration-300 border border-white border-opacity-20 text-xs md:text-sm"
+              title="Refresh Addresses"
+              disabled={loading}
+            ></button>
+            <button
+              onClick={() => {
+                setCurrentAddress(null);
+                setIsFormOpen(true);
+              }}
+              className="flex items-center bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-3 py-1 rounded-md shadow-sm hover:shadow transition-all duration-300 border border-white border-opacity-20 text-xs md:text-sm"
             >
-              <path
-                fillRule="evenodd"
-                d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
-                clipRule="evenodd"
-              />
-            </svg>
-          </button>
+              <FiPlus size={16} />
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                {[
-                  "NO",
-                  "Type",
-                  "Mobile",
-                  "Region",
-                  "Wereda",
-                  "Zone",
-                  "Kifleketema",
-                  "Kebele",
-                  "House No",
-                  "Tele/Home",
-                  "Email",
-                  <svg
-                    key="action-icon"
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4 inline"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z"
-                      clipRule="evenodd"
-                    />
-                  </svg>,
-                ].map((header, idx) => (
-                  <motion.th
-                    key={typeof header === "string" ? header : "action-header"}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 * idx }}
-                    className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider text-[12px]"
-                  >
-                    {header}
-                  </motion.th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {addresses.map((address, idx) => (
-                <motion.tr
-                  key={address.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.05 * idx }}
-                  whileHover={{ backgroundColor: "#f8fafc" }}
-                  className="transition-colors"
-                >
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 text-[12px]">
-                    {idx + 1}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-[12px]">
-                    {addressTypeMap[address.addressType] || "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-[12px]">
-                    {formatPhoneNumber(address.mobileNumber)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-[12px]">
-                    {address.region || "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-[12px]">
-                    {address.wereda || "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-[12px]">
-                    {address.zone || "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-[12px]">
-                    {address.kifleketema || "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-[12px]">
-                    {address.kebele || "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-[12px]">
-                    {address.houseNo || "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-[12px]">
-                    {address.teleHome || "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-[12px]">
-                    {address.email || "-"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex gap-3">
-                      <motion.button
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => handleEdit(address)}
-                        className="text-[#3c8dbc] hover:text-[#367fa9] p-1 rounded-full hover:bg-blue-50"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
+          {addresses.length === 0 && !loading ? (
+            <div className="p-4 text-center text-gray-500">
+              No addresses found. Add your first address.
+            </div>
+          ) : loading && addresses.length === 0 ? (
+            <div className="p-4 text-center text-gray-500">
+              Loading addresses...
+            </div>
+          ) : (
+            <table className="min-w-full divide-y divide-gray-200 text-xs">
+              <thead className="bg-gray-50">
+                <tr>
+                  {[
+                    "NO",
+                    "Type",
+                    "Mobile",
+                    "Region",
+                    "Wereda",
+                    "Zone",
+                    "Kifleketema",
+                    "Kebele",
+                    "House No",
+                    "Tele/Home",
+                    "Email",
+                    "Actions",
+                  ].map((header, idx) => (
+                    <th
+                      key={idx}
+                      className="px-6 py-3 text-left font-bold text-gray-700 tracking-wider"
+                      style={{ fontSize: "12px" }}
+                    >
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {addresses.map((address, idx) => (
+                  <tr key={address.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
+                      {idx + 1}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                      {addressTypes.find((t) => t.id === address.addressType)
+                        ?.addressType || "-"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                      {formatPhoneNumber(address.mobileNumber)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                      {address.region || "-"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                      {address.wereda || "-"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                      {address.zone || "-"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                      {address.kifleketema || "-"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                      {address.kebele || "-"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                      {address.houseNo || "-"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                      {address.teleHome || "-"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                      {address.email || "-"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap font-medium">
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => handleEdit(address)}
+                          className="text-[#3c8dbc] hover:text-blue-600 p-1 rounded-full hover:bg-blue-50"
+                          title="Edit Address"
                         >
-                          <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                        </svg>
-                      </motion.button>
-                      <motion.button
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => handleDelete(address.id ?? 0)}
-                        className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-50"
-                      ></motion.button>
-                    </div>
-                  </td>
-                </motion.tr>
-              ))}
-            </tbody>
-          </table>
+                          <FiEdit2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </motion.div>
     </div>
