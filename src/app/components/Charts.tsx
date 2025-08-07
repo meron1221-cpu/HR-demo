@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { Chart, registerables, type ChartConfiguration } from 'chart.js'
+import { Chart, registerables, type ChartConfiguration, type Chart as ChartType } from 'chart.js'
 import { chartConfig } from '@/lib/chartConfig'
 
 Chart.register(...registerables)
@@ -9,6 +9,8 @@ Chart.register(...registerables)
 export default function Charts() {
     const areaChartRef = useRef<HTMLCanvasElement>(null)
     const pieChartRef = useRef<HTMLCanvasElement>(null)
+    const areaChartInstance = useRef<ChartType | null>(null)
+    const pieChartInstance = useRef<ChartType | null>(null)
 
     useEffect(() => {
         if (areaChartRef.current && pieChartRef.current) {
@@ -16,8 +18,19 @@ export default function Charts() {
             const pieCtx = pieChartRef.current.getContext('2d')
 
             if (areaCtx && pieCtx) {
-                new Chart(areaCtx, chartConfig.areaChart as ChartConfiguration)
-                new Chart(pieCtx, chartConfig.pieChart as ChartConfiguration)
+                areaChartInstance.current = new Chart(areaCtx, chartConfig.areaChart as ChartConfiguration)
+                pieChartInstance.current = new Chart(pieCtx, chartConfig.pieChart as ChartConfiguration)
+            }
+        }
+
+        return () => {
+            if (areaChartInstance.current) {
+                areaChartInstance.current.destroy()
+                areaChartInstance.current = null
+            }
+            if (pieChartInstance.current) {
+                pieChartInstance.current.destroy()
+                pieChartInstance.current = null
             }
         }
     }, [])
